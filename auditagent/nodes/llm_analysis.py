@@ -1,15 +1,15 @@
-"""LLM analysis node — sends each finding to the LLM and returns enriched results."""
+"""LLM analysis node — runs the LangChain analysis chain over all findings."""
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from auditagent.llm import get_client, analyse_finding
+from auditagent.llm import analyse_finding, get_llm
 from auditagent.utils import DEFAULT_MODEL
 
 
-MAX_WORKERS = 4   # light concurrency; OpenRouter rate-limits gently
-MAX_FINDINGS = 50  # cost guard: warn and cap if the project has a huge number of findings
+MAX_WORKERS = 4
+MAX_FINDINGS = 50  # cost guard
 
 
 def llm_analysis_node(state: dict) -> dict:
@@ -22,26 +22,24 @@ def llm_analysis_node(state: dict) -> dict:
 
     if len(raw_findings) > MAX_FINDINGS:
         print(
-            f"[warn] {len(raw_findings)} findings found — capping LLM analysis at {MAX_FINDINGS} "
-            f"to control cost. Use --no-semgrep or fix findings incrementally."
+            f"[warn] {len(raw_findings)} findings — capping LLM analysis at {MAX_FINDINGS} "
+            "to control cost. Use --no-semgrep or fix findings incrementally."
         )
         raw_findings = raw_findings[:MAX_FINDINGS]
 
-    client = get_client()
     llm_findings: list[dict] = []
 
+    # Each thread gets its own ChatOpenAI instance (not thread-safe to share)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(analyse_finding, f, model, client): f
+            pool.submit(analyse_finding, f, model): f
             for f in raw_findings
         }
         for future in as_completed(futures):
             orig_finding = futures[future]
             try:
-                result = future.result()
-                llm_findings.append(result)
+                llm_findings.append(future.result())
             except Exception as exc:
-                # Fallback for any thread-level error not caught inside analyse_finding
                 llm_findings.append({
                     "finding": orig_finding,
                     "confirmed": False,
@@ -52,7 +50,6 @@ def llm_analysis_node(state: dict) -> dict:
                     "exploitable": False,
                 })
 
-    # Sort by severity: Critical first
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
     llm_findings.sort(key=lambda x: order.get(x.get("severity", "Low"), 3))
 
