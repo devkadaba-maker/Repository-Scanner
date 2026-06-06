@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Security Audit Agent</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            slate: {
+              850: '#0f172a',
+              950: '#020617',
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'glow': 'glow 2s ease-in-out infinite alternate',
+            'dash': 'dash 1.5s linear infinite',
+            'slide-in': 'slideIn 0.3s ease-out',
+            'fade-in': 'fadeIn 0.4s ease-out',
+          },
+          keyframes: {
+            glow: {
+              '0%': { boxShadow: '0 0 5px rgba(99,102,241,0.3), 0 0 20px rgba(99,102,241,0.1)' },
+              '100%': { boxShadow: '0 0 10px rgba(99,102,241,0.6), 0 0 40px rgba(99,102,241,0.3)' },
+            },
+            dash: {
+              '0%': { strokeDashoffset: '0' },
+              '100%': { strokeDashoffset: '-20' },
+            },
+            slideIn: {
+              '0%': { transform: 'translateY(-10px)', opacity: '0' },
+              '100%': { transform: 'translateY(0)', opacity: '1' },
+            },
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; }
+
+    /* Glassmorphism card */
+    .glass-card {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1rem;
+    }
+
+    /* Glow button */
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-primary::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .btn-primary:hover::before { opacity: 1; }
+    .btn-primary:hover {
+      box-shadow: 0 0 20px rgba(99,102,241,0.5), 0 0 60px rgba(99,102,241,0.2);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active { transform: translateY(0); }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(15,23,42,0.5); }
+    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.7); }
+
+    /* Pipeline connector animation */
+    .pipeline-line {
+      background: linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 2s linear infinite;
+    }
+    .pipeline-line-active {
+      animation: shimmer 1s linear infinite;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1);
+      background-size: 200% 100%;
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* Node pulse */
+    @keyframes nodePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(59,130,246,0); }
+    }
+    .node-active { animation: nodePulse 1.5s ease-in-out infinite; }
+
+    /* Log entry animation */
+    .log-entry { animation: slideIn 0.2s ease-out; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-10px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Finding row expand */
+    .finding-detail { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Tab active indicator */
+    .tab-active {
+      background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2));
+      border-bottom: 2px solid #6366f1;
+    }
+
+    /* Input focus glow */
+    .input-field:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+
+    /* Toggle switch */
+    .toggle-bg { transition: background 0.3s ease; }
+    .toggle-dot { transition: transform 0.3s ease; }
+
+    /* Stat counter */
+    .stat-number {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum";
+    }
+
+    /* Severity badge */
+    .badge-critical { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .badge-high { background: rgba(249,115,22,0.15); color: #f97316; border: 1px solid rgba(249,115,22,0.3); }
+    .badge-medium { background: rgba(234,179,8,0.15); color: #eab308; border: 1px solid rgba(234,179,8,0.3); }
+    .badge-low { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+
+    /* Code block */
+    .code-block {
+      background: rgba(2,6,23,0.8);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+
+    /* Background grid pattern */
+    .bg-grid {
+      background-image:
+        linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Gradient text */
+    .gradient-text {
+      background: linear-gradient(135deg, #818cf8, #a78bfa, #c4b5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Radial glow background */
+    .hero-glow {
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 400px;
+      background: radial-gradient(ellipse at center, rgba(99,102,241,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased bg-grid">
+
+  <!-- Background ambient glow -->
+  <div class="hero-glow"></div>
+
+  <div
+    x-data="auditApp()"
+    x-init="init()"
+    class="relative z-10 min-h-screen"
+  >
+
+    <!-- ============================================================
+         GLOBAL HEADER
+    ============================================================ -->
+    <header class="border-b border-white/5 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <!-- Shield icon -->
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-base font-bold text-white leading-tight">Security Audit Agent</h1>
+            <p class="text-xs text-slate-400 leading-tight">Ethical vulnerability scanning for Python projects</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- Current screen indicator -->
+          <div class="hidden sm:flex items-center gap-2 text-xs text-slate-500">
+            <span :class="screen === 'home' ? 'text-indigo-400 font-medium' : ''">Configure</span>
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            <span :class="screen === 'running' ? 'text-indigo-400 font-medium' : ''">Running</span>
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            <span :class="screen === 'results' ? 'text-indigo-400 font-medium' : ''">Results</span>
+          </div>
+
+          <!-- New audit (only on results) -->
+          <button
+            x-show="screen === 'results'"
+            @click="goHome()"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/10 hover:border-indigo-500/50 text-sm text-slate-300 hover:text-white transition-all duration-200"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            New Audit
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============================================================
+         SCREEN 1: HOME
+    ============================================================ -->
+    <main x-show="screen === 'home'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="max-w-5xl mx-auto px-6 py-12">
+
+      <!-- Hero -->
+      <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-medium mb-4">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+          Powered by MiMo-V2.5-Pro via OpenRouter
+        </div>
+        <h2 class="text-4xl font-extrabold gradient-text mb-3">Start a Security Audit</h2>
+        <p class="text-slate-400 text-base max-w-xl mx-auto">Scan your Python projects for vulnerabilities with AI-powered analysis. Find, confirm, and understand security issues before attackers do.</p>
+      </div>
+
+      <!-- Main form card -->
+      <div class="glass-card p-6 mb-6">
+
+        <!-- Source tabs -->
+        <div class="flex gap-1 p-1 bg-slate-800/50 rounded-xl mb-6 w-fit">
+          <button
+            @click="sourceTab = 'local'"
+            :class="sourceTab === 'local' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            Local Path
+          </button>
+          <button
+            @click="sourceTab = 'github'"
+            :class="sourceTab === 'github' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            GitHub Repo
+          </button>
+        </div>
+
+        <!-- Local path input -->
+        <div x-show="sourceTab === 'local'" x-transition class="mb-6">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Project Path</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            </div>
+            <input
+              type="text"
+              x-model="form.projectPath"
+              placeholder="/path/to/your/python/project"
+              class="input-field w-full bg-slate-800/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 transition-all duration-200"
+            />
+          </div>
+          <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Enter the absolute path to a Python project directory (e.g. Flask, FastAPI, Django app)
+          </p>
+        </div>
+
+        <!-- GitHub inputs -->
+        <div x-show="sourceTab === 'github'" x-transition class="mb-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">GitHub Repository URL</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="w-4 h-4 text-slate-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+              </div>
+              <input
+                type="text"
+                x-model="form.repoUrl"
+                placeholder="https://github.com/username/repository"
+                class="input-field w-full bg-slate-800/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 transition-all duration-200"
+              />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">Branch <span class="text-slate-500 font-normal">(optional)</span></label>
+            <input
+              type="text"
+              x-model="form.branch"
+              placeholder="main"
+              class="input-field w-full bg-slate-800/80 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 transition-all duration-200"
+            />
+          </div>
+          <div x-show="cloneStatus" class="flex items-center gap-2 text-sm">
+            <span x-show="cloneLoading" class="flex items-center gap-2 text-slate-400">
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              Cloning repository…
+            </span>
+            <span x-show="!cloneLoading && cloneSuccess" class="flex items-center gap-2 text-green-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span x-text="cloneStatus"></span>
+            </span>
+            <span x-show="!cloneLoading && !cloneSuccess" class="flex items-center gap-2 text-red-400">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              <span x-text="cloneStatus"></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Options row -->
+        <div class="border-t border-white/5 pt-5 mb-5">
+          <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Scan Options</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+
+            <!-- Skip Semgrep toggle -->
+            <div class="flex items-start gap-3">
+              <button
+                @click="form.noSemgrep = !form.noSemgrep"
+                :class="form.noSemgrep ? 'bg-indigo-600' : 'bg-slate-700'"
+                class="toggle-bg relative inline-flex h-6 w-11 flex-shrink-0 rounded-full cursor-pointer mt-0.5"
+              >
+                <span
+                  :class="form.noSemgrep ? 'translate-x-5' : 'translate-x-0.5'"
+                  class="toggle-dot inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5"
+                ></span>
+              </button>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Skip Semgrep</p>
+                <p class="text-xs text-slate-500 mt-0.5">Use only Bandit for static analysis (faster)</p>
+              </div>
+            </div>
+
+            <!-- Enable Exploitation toggle -->
+            <div class="flex items-start gap-3">
+              <button
+                @click="form.exploit = !form.exploit"
+                :class="form.exploit ? 'bg-orange-500' : 'bg-slate-700'"
+                class="toggle-bg relative inline-flex h-6 w-11 flex-shrink-0 rounded-full cursor-pointer mt-0.5"
+              >
+                <span
+                  :class="form.exploit ? 'translate-x-5' : 'translate-x-0.5'"
+                  class="toggle-dot inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5"
+                ></span>
+              </button>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Enable Exploitation</p>
+                <p class="text-xs text-slate-500 mt-0.5">Safe PoC validation (localhost only)</p>
+              </div>
+            </div>
+
+            <!-- Model selector -->
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1.5">LLM Model</label>
+              <select
+                x-model="form.model"
+                class="input-field w-full bg-slate-800/80 border border-white/10 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 cursor-pointer"
+              >
+                <option value="xiaomi/mimo-v2.5-pro">MiMo-V2.5-Pro (default)</option>
+                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                <option value="anthropic/claude-3-haiku">Claude 3 Haiku (fast)</option>
+                <option value="openai/gpt-4o">GPT-4o</option>
+                <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
+                <option value="meta-llama/llama-3.1-70b-instruct">Llama 3.1 70B</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Exploitation warning -->
+        <div
+          x-show="form.exploit"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 -translate-y-2"
+          x-transition:enter-end="opacity-100 translate-y-0"
+          class="mb-5 flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20"
+        >
+          <svg class="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <div>
+            <p class="text-sm font-semibold text-orange-300">Exploitation Mode Enabled</p>
+            <p class="text-xs text-orange-400/80 mt-0.5">Safe PoC scripts will be generated and executed against localhost only. By starting the audit you confirm you own this target and have authorization to test it. Results saved to <code class="bg-orange-500/20 px-1 rounded">exploits/</code> directory.</p>
+          </div>
+        </div>
+
+        <!-- I own target checkbox (shown when exploit enabled) -->
+        <div
+          x-show="form.exploit"
+          x-transition
+          class="mb-5 flex items-center gap-3"
+        >
+          <input
+            type="checkbox"
+            id="iOwnTarget"
+            x-model="form.iOwnTarget"
+            class="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-600 focus:ring-indigo-500/30 focus:ring-2 cursor-pointer"
+          />
+          <label for="iOwnTarget" class="text-sm text-slate-300 cursor-pointer">
+            I confirm I own this target and have explicit authorization to test it
+          </label>
+        </div>
+
+        <!-- Error message -->
+        <div x-show="formError" class="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-sm text-red-400">
+          <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span x-text="formError"></span>
+        </div>
+
+        <!-- Start audit button -->
+        <button
+          @click="startAudit()"
+          :disabled="isStarting"
+          class="btn-primary w-full py-4 rounded-xl text-white font-semibold text-base tracking-wide relative flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <span x-show="!isStarting" class="relative z-10 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+            Start Security Audit
+          </span>
+          <span x-show="isStarting" class="relative z-10 flex items-center gap-2">
+            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            Initializing…
+          </span>
+        </button>
+      </div>
+
+      <!-- Recent jobs -->
+      <div class="glass-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Recent Audits
+          </h3>
+          <button @click="loadJobs()" class="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Refresh
+          </button>
+        </div>
+
+        <div x-show="jobs.length === 0 && !jobsLoading" class="py-10 text-center">
+          <svg class="w-10 h-10 text-slate-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <p class="text-slate-600 text-sm">No recent audits</p>
+        </div>
+
+        <div x-show="jobsLoading" class="py-8 flex items-center justify-center gap-2 text-slate-500 text-sm">
+          <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          Loading…
+        </div>
+
+        <div x-show="jobs.length > 0" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                <th class="text-left pb-3 font-medium">Project</th>
+                <th class="text-left pb-3 font-medium">Date</th>
+                <th class="text-left pb-3 font-medium">Status</th>
+                <th class="text-left pb-3 font-medium">Findings</th>
+                <th class="text-left pb-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <template x-for="job in jobs" :key="job.job_id">
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                  <td class="py-3 pr-4">
+                    <div class="font-mono text-xs text-slate-300 truncate max-w-48" x-text="job.project_path ? job.project_path.split('/').pop() : job.job_id.slice(0,8)"></div>
+                    <div class="text-xs text-slate-600 truncate max-w-48" x-text="job.project_path || ''"></div>
+                  </td>
+                  <td class="py-3 pr-4 text-xs text-slate-400" x-text="formatDate(job.created_at)"></td>
+                  <td class="py-3 pr-4">
+                    <span
+                      :class="{
+                        'bg-green-500/10 text-green-400 border-green-500/20': job.status === 'complete',
+                        'bg-blue-500/10 text-blue-400 border-blue-500/20': job.status === 'running',
+                        'bg-red-500/10 text-red-400 border-red-500/20': job.status === 'error',
+                        'bg-slate-500/10 text-slate-400 border-slate-500/20': !['complete','running','error'].includes(job.status)
+                      }"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border"
+                    >
+                      <span
+                        :class="{
+                          'bg-green-400': job.status === 'complete',
+                          'bg-blue-400 animate-pulse': job.status === 'running',
+                          'bg-red-400': job.status === 'error',
+                          'bg-slate-400': !['complete','running','error'].includes(job.status)
+                        }"
+                        class="w-1.5 h-1.5 rounded-full"
+                      ></span>
+                      <span x-text="job.status || 'unknown'"></span>
+                    </span>
+                  </td>
+                  <td class="py-3 pr-4">
+                    <div x-show="job.finding_counts" class="flex items-center gap-2">
+                      <span x-show="job.finding_counts?.critical" class="text-xs text-red-400" x-text="job.finding_counts?.critical + ' C'"></span>
+                      <span x-show="job.finding_counts?.high" class="text-xs text-orange-400" x-text="job.finding_counts?.high + ' H'"></span>
+                      <span x-show="job.finding_counts?.medium" class="text-xs text-yellow-400" x-text="job.finding_counts?.medium + ' M'"></span>
+                      <span x-show="job.finding_counts?.low" class="text-xs text-green-400" x-text="job.finding_counts?.low + ' L'"></span>
+                      <span x-show="!job.finding_counts?.critical && !job.finding_counts?.high && !job.finding_counts?.medium && !job.finding_counts?.low" class="text-xs text-slate-600">–</span>
+                    </div>
+                    <span x-show="!job.finding_counts" class="text-xs text-slate-600">–</span>
+                  </td>
+                  <td class="py-3">
+                    <button
+                      x-show="job.status === 'complete'"
+                      @click="loadResult(job.job_id)"
+                      class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+                    >
+                      View
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+
+    <!-- ============================================================
+         SCREEN 2: RUNNING
+    ============================================================ -->
+    <main x-show="screen === 'running'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="max-w-6xl mx-auto px-6 py-10">
+
+      <!-- Header row -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h2 class="text-xl font-bold text-white">Audit in Progress</h2>
+          <p class="text-sm text-slate-400 mt-1 font-mono" x-text="currentJobId ? 'Job ' + currentJobId.slice(0,8) + '…' : ''"></p>
+        </div>
+        <button
+          @click="cancelAudit()"
+          class="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-all duration-200 text-sm font-medium"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          Cancel
+        </button>
+      </div>
+
+      <!-- Pipeline stepper -->
+      <div class="glass-card p-6 mb-6">
+        <div class="flex items-center justify-between overflow-x-auto pb-2">
+          <template x-for="(node, idx) in pipelineNodes" :key="node.id">
+            <div class="flex items-center">
+              <!-- Node -->
+              <div class="flex flex-col items-center min-w-0">
+                <!-- Icon circle -->
+                <div
+                  :class="{
+                    'bg-green-500/20 border-green-500/50 text-green-400': node.state === 'done',
+                    'bg-blue-500/20 border-blue-400/50 text-blue-400 node-active': node.state === 'active',
+                    'bg-slate-800/80 border-white/10 text-slate-600': node.state === 'pending',
+                    'bg-slate-800/40 border-white/5 text-slate-700': node.state === 'skipped',
+                  }"
+                  class="w-12 h-12 rounded-2xl border-2 flex items-center justify-center transition-all duration-500 mb-2"
+                >
+                  <!-- Done checkmark -->
+                  <svg x-show="node.state === 'done'" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+
+                  <!-- Skipped dash -->
+                  <svg x-show="node.state === 'skipped'" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M18 12H6"/></svg>
+
+                  <!-- Active spinner -->
+                  <svg x-show="node.state === 'active'" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+
+                  <!-- Pending icon (node-specific) -->
+                  <template x-if="node.state === 'pending'">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" x-bind:d="node.icon"/>
+                    </svg>
+                  </template>
+                </div>
+
+                <!-- Label -->
+                <span
+                  :class="{
+                    'text-green-400': node.state === 'done',
+                    'text-blue-400': node.state === 'active',
+                    'text-slate-600': node.state === 'pending' || node.state === 'skipped',
+                  }"
+                  class="text-xs font-medium whitespace-nowrap transition-colors duration-300"
+                  x-text="node.label"
+                ></span>
+              </div>
+
+              <!-- Connector line (not after last) -->
+              <div
+                x-show="idx < pipelineNodes.length - 1"
+                :class="{
+                  'pipeline-line-active': pipelineNodes[idx + 1]?.state === 'active',
+                  'pipeline-line': pipelineNodes[idx + 1]?.state === 'pending',
+                  'bg-green-500/30': node.state === 'done' && pipelineNodes[idx + 1]?.state !== 'active',
+                }"
+                class="h-0.5 w-12 sm:w-20 mx-3 rounded-full flex-shrink-0 transition-all duration-500"
+              ></div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div class="glass-card p-4 text-center">
+          <div class="stat-number text-2xl font-bold text-white" x-text="runStats.files"></div>
+          <div class="text-xs text-slate-500 mt-1">Files Scanned</div>
+        </div>
+        <div class="glass-card p-4 text-center">
+          <div class="stat-number text-2xl font-bold text-white" x-text="runStats.raw"></div>
+          <div class="text-xs text-slate-500 mt-1">Raw Findings</div>
+        </div>
+        <div class="glass-card p-4 text-center">
+          <div class="stat-number text-2xl font-bold text-indigo-400" x-text="runStats.confirmed"></div>
+          <div class="text-xs text-slate-500 mt-1">Confirmed</div>
+        </div>
+        <div class="glass-card p-4 text-center">
+          <div class="stat-number text-2xl font-bold text-orange-400" x-text="runStats.exploitable"></div>
+          <div class="text-xs text-slate-500 mt-1">Exploitable</div>
+        </div>
+      </div>
+
+      <!-- Live feed -->
+      <div class="glass-card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+            Live Feed
+          </h3>
+          <span class="text-xs text-slate-600" x-text="liveLogs.length + ' events'"></span>
+        </div>
+        <div
+          id="liveFeed"
+          class="h-72 overflow-y-auto space-y-1 font-mono text-xs"
+          x-ref="liveFeed"
+        >
+          <div x-show="liveLogs.length === 0" class="py-12 text-center text-slate-700">
+            Waiting for events…
+          </div>
+          <template x-for="(log, idx) in liveLogs" :key="idx">
+            <div
+              :class="{
+                'text-red-400': log.severity === 'Critical',
+                'text-orange-400': log.severity === 'High',
+                'text-yellow-400': log.severity === 'Medium',
+                'text-green-400': log.severity === 'Low' || log.type === 'node_done',
+                'text-blue-400': log.type === 'node_start',
+                'text-slate-400': log.type === 'info',
+                'text-red-300': log.type === 'error',
+                'text-violet-400': log.type === 'complete',
+              }"
+              class="log-entry flex items-start gap-2 py-0.5"
+            >
+              <span class="text-slate-700 flex-shrink-0 select-none" x-text="log.time"></span>
+              <span class="flex-shrink-0">
+                <span x-show="log.type === 'finding'">[FINDING]</span>
+                <span x-show="log.type === 'node_start'">[START]</span>
+                <span x-show="log.type === 'node_done'">[DONE]</span>
+                <span x-show="log.type === 'complete'">[COMPLETE]</span>
+                <span x-show="log.type === 'error'">[ERROR]</span>
+                <span x-show="log.type === 'info'">[INFO]</span>
+              </span>
+              <span x-text="log.message" class="leading-relaxed"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </main>
+
+
+    <!-- ============================================================
+         SCREEN 3: RESULTS
+    ============================================================ -->
+    <main x-show="screen === 'results'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="max-w-7xl mx-auto px-6 py-10">
+
+      <!-- Summary header -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <div class="flex items-center gap-3 mb-1">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+              <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <h2 class="text-xl font-bold text-white">Audit Complete</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs text-slate-400 mt-2">
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              <span class="font-mono" x-text="resultData.projectName || 'Unknown'"></span>
+            </span>
+            <span class="text-slate-700">•</span>
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <span x-text="resultData.date"></span>
+            </span>
+            <span class="text-slate-700">•</span>
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+              <span class="font-mono" x-text="resultData.model || 'Unknown'"></span>
+            </span>
+            <span x-show="resultData.techStack" class="text-slate-700">•</span>
+            <span x-show="resultData.techStack" class="font-mono bg-slate-800 px-2 py-0.5 rounded" x-text="resultData.techStack"></span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <a
+            x-show="resultData.reportPath"
+            :href="'/api/report?path=' + encodeURIComponent(resultData.reportPath || '')"
+            target="_blank"
+            class="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 hover:border-indigo-500/30 text-sm text-slate-300 hover:text-white transition-all duration-200"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Download Report
+          </a>
+          <button
+            @click="goHome()"
+            class="btn-primary flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white"
+          >
+            <svg class="w-4 h-4 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span class="relative z-10">New Audit</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Severity stat cards + chart row -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+        <!-- Severity cards (2x2 grid) -->
+        <div class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
+
+          <!-- Critical -->
+          <div class="glass-card p-5 border border-red-500/10 bg-gradient-to-br from-red-500/5 to-transparent">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-semibold text-red-400 uppercase tracking-widest">Critical</span>
+              <div class="w-7 h-7 rounded-lg bg-red-500/15 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              </div>
+            </div>
+            <div class="stat-number text-4xl font-extrabold text-red-400" x-text="severityCounts.Critical || 0"></div>
+            <div class="text-xs text-slate-600 mt-1">vulnerabilities</div>
+          </div>
+
+          <!-- High -->
+          <div class="glass-card p-5 border border-orange-500/10 bg-gradient-to-br from-orange-500/5 to-transparent">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-semibold text-orange-400 uppercase tracking-widest">High</span>
+              <div class="w-7 h-7 rounded-lg bg-orange-500/15 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/></svg>
+              </div>
+            </div>
+            <div class="stat-number text-4xl font-extrabold text-orange-400" x-text="severityCounts.High || 0"></div>
+            <div class="text-xs text-slate-600 mt-1">vulnerabilities</div>
+          </div>
+
+          <!-- Medium -->
+          <div class="glass-card p-5 border border-yellow-500/10 bg-gradient-to-br from-yellow-500/5 to-transparent">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-semibold text-yellow-400 uppercase tracking-widest">Medium</span>
+              <div class="w-7 h-7 rounded-lg bg-yellow-500/15 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+            </div>
+            <div class="stat-number text-4xl font-extrabold text-yellow-400" x-text="severityCounts.Medium || 0"></div>
+            <div class="text-xs text-slate-600 mt-1">vulnerabilities</div>
+          </div>
+
+          <!-- Low -->
+          <div class="glass-card p-5 border border-green-500/10 bg-gradient-to-br from-green-500/5 to-transparent">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-semibold text-green-400 uppercase tracking-widest">Low</span>
+              <div class="w-7 h-7 rounded-lg bg-green-500/15 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+            </div>
+            <div class="stat-number text-4xl font-extrabold text-green-400" x-text="severityCounts.Low || 0"></div>
+            <div class="text-xs text-slate-600 mt-1">vulnerabilities</div>
+          </div>
+        </div>
+
+        <!-- Donut chart -->
+        <div class="glass-card p-5 flex flex-col items-center justify-center">
+          <h3 class="text-sm font-semibold text-slate-300 mb-4 self-start">Severity Breakdown</h3>
+          <div class="relative w-48 h-48">
+            <canvas id="severityChart" width="192" height="192"></canvas>
+            <!-- Center label -->
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div class="stat-number text-3xl font-extrabold text-white" x-text="totalFindings"></div>
+              <div class="text-xs text-slate-500 font-medium">total</div>
+            </div>
+          </div>
+          <div class="flex flex-wrap justify-center gap-3 mt-4">
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span><span class="text-xs text-slate-400">Critical</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span><span class="text-xs text-slate-400">High</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span><span class="text-xs text-slate-400">Medium</span></div>
+            <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span><span class="text-xs text-slate-400">Low</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Findings table -->
+      <div class="glass-card p-5">
+        <!-- Table header + filters -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <h3 class="text-sm font-semibold text-slate-300">
+            Findings
+            <span class="ml-2 text-xs text-slate-600 font-normal" x-text="filteredFindings.length + ' shown'"></span>
+          </h3>
+
+          <!-- Severity filter tabs -->
+          <div class="flex items-center gap-1 bg-slate-800/60 p-1 rounded-xl">
+            <button
+              @click="severityFilter = 'all'"
+              :class="severityFilter === 'all' ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            >
+              All <span class="ml-1 opacity-60" x-text="totalFindings"></span>
+            </button>
+            <button
+              @click="severityFilter = 'Critical'"
+              :class="severityFilter === 'Critical' ? 'bg-red-500/20 text-red-400' : 'text-slate-500 hover:text-red-400'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            >
+              Critical <span class="ml-1 opacity-70" x-text="severityCounts.Critical || 0"></span>
+            </button>
+            <button
+              @click="severityFilter = 'High'"
+              :class="severityFilter === 'High' ? 'bg-orange-500/20 text-orange-400' : 'text-slate-500 hover:text-orange-400'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            >
+              High <span class="ml-1 opacity-70" x-text="severityCounts.High || 0"></span>
+            </button>
+            <button
+              @click="severityFilter = 'Medium'"
+              :class="severityFilter === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' : 'text-slate-500 hover:text-yellow-400'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            >
+              Medium <span class="ml-1 opacity-70" x-text="severityCounts.Medium || 0"></span>
+            </button>
+            <button
+              @click="severityFilter = 'Low'"
+              :class="severityFilter === 'Low' ? 'bg-green-500/20 text-green-400' : 'text-slate-500 hover:text-green-400'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200"
+            >
+              Low <span class="ml-1 opacity-70" x-text="severityCounts.Low || 0"></span>
+            </button>
+          </div>
+        </div>
+
+        <div x-show="filteredFindings.length === 0" class="py-16 text-center">
+          <svg class="w-10 h-10 text-slate-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          <p class="text-slate-600 text-sm">No findings for this filter</p>
+        </div>
+
+        <div x-show="filteredFindings.length > 0" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                <th class="text-left pb-3 font-medium w-24">Severity</th>
+                <th class="text-left pb-3 font-medium">Issue</th>
+                <th class="text-left pb-3 font-medium hidden md:table-cell">File:Line</th>
+                <th class="text-left pb-3 font-medium hidden sm:table-cell w-24">Source</th>
+                <th class="text-center pb-3 font-medium w-24 hidden lg:table-cell">Exploitable</th>
+                <th class="text-right pb-3 font-medium w-16"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <template x-for="(f, idx) in filteredFindings" :key="f._id || idx">
+                <template>
+                  <!-- Finding row -->
+                  <tr
+                    @click="toggleFinding(idx)"
+                    :class="expandedFindings.has(idx) ? 'bg-slate-800/40' : 'hover:bg-slate-800/20'"
+                    class="cursor-pointer transition-colors group"
+                  >
+                    <td class="py-3 pr-3">
+                      <span
+                        :class="{
+                          'badge-critical': f.severity === 'Critical',
+                          'badge-high': f.severity === 'High',
+                          'badge-medium': f.severity === 'Medium',
+                          'badge-low': f.severity === 'Low',
+                        }"
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold"
+                      >
+                        <span
+                          :class="{
+                            'bg-red-500': f.severity === 'Critical',
+                            'bg-orange-500': f.severity === 'High',
+                            'bg-yellow-500': f.severity === 'Medium',
+                            'bg-green-500': f.severity === 'Low',
+                          }"
+                          class="w-1.5 h-1.5 rounded-full"
+                        ></span>
+                        <span x-text="f.severity"></span>
+                      </span>
+                    </td>
+                    <td class="py-3 pr-4">
+                      <div class="font-medium text-slate-200 text-sm" x-text="f.finding?.issue || f.issue || 'Unknown'"></div>
+                      <div class="text-xs text-slate-500 mt-0.5 line-clamp-1 hidden sm:block" x-text="f.attack_vector || ''"></div>
+                    </td>
+                    <td class="py-3 pr-4 hidden md:table-cell">
+                      <span class="font-mono text-xs text-slate-400" x-text="formatFileLine(f)"></span>
+                    </td>
+                    <td class="py-3 pr-4 hidden sm:table-cell">
+                      <span class="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded font-mono" x-text="f.finding?.source || f.source || '–'"></span>
+                    </td>
+                    <td class="py-3 text-center hidden lg:table-cell">
+                      <span x-show="f.exploitable" class="inline-flex items-center gap-1 text-xs text-red-400">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        Yes
+                      </span>
+                      <span x-show="!f.exploitable" class="text-xs text-slate-700">–</span>
+                    </td>
+                    <td class="py-3 text-right">
+                      <svg
+                        :class="expandedFindings.has(idx) ? 'rotate-180' : ''"
+                        class="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-all duration-200 ml-auto"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                      </svg>
+                    </td>
+                  </tr>
+
+                  <!-- Expanded detail row -->
+                  <tr x-show="expandedFindings.has(idx)" class="bg-slate-900/60">
+                    <td colspan="6" class="px-4 pb-5 pt-1">
+                      <div class="finding-detail grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2">
+
+                        <!-- Left: explanation + fix -->
+                        <div class="space-y-3">
+                          <!-- Attack Vector -->
+                          <div x-show="f.attack_vector">
+                            <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                              Attack Vector
+                            </div>
+                            <p class="text-sm text-slate-300 leading-relaxed" x-text="f.attack_vector"></p>
+                          </div>
+
+                          <!-- Explanation -->
+                          <div x-show="f.explanation">
+                            <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                              Explanation
+                            </div>
+                            <p class="text-sm text-slate-400 leading-relaxed" x-text="f.explanation"></p>
+                          </div>
+
+                          <!-- Fix -->
+                          <div x-show="f.fix">
+                            <div class="text-xs font-semibold text-green-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                              Recommended Fix
+                            </div>
+                            <p class="text-sm text-green-400/80 leading-relaxed" x-text="f.fix"></p>
+                          </div>
+                        </div>
+
+                        <!-- Right: code + exploit evidence -->
+                        <div class="space-y-3">
+                          <!-- Code snippet -->
+                          <div x-show="f.finding?.code_snippet">
+                            <div class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                              Code Snippet
+                            </div>
+                            <pre class="code-block p-3 rounded-xl overflow-x-auto whitespace-pre-wrap break-words" x-text="f.finding?.code_snippet"></pre>
+                          </div>
+
+                          <!-- Exploit evidence -->
+                          <div x-show="getExploitResult(f)">
+                            <div class="text-xs font-semibold text-orange-500/70 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                              Exploit Evidence
+                              <span
+                                :class="getExploitResult(f)?.verdict === 'Exploitable' ? 'text-red-400 bg-red-500/10' : 'text-slate-400 bg-slate-800'"
+                                class="ml-1 px-1.5 py-0.5 rounded text-xs"
+                                x-text="getExploitResult(f)?.verdict"
+                              ></span>
+                            </div>
+                            <pre class="code-block p-3 rounded-xl overflow-x-auto whitespace-pre-wrap break-words text-orange-300/70" x-text="getExploitResult(f)?.evidence"></pre>
+                            <p x-show="getExploitResult(f)?.impact" class="text-xs text-slate-500 mt-2" x-text="'Impact: ' + getExploitResult(f)?.impact"></p>
+                          </div>
+
+                          <!-- Source metadata -->
+                          <div class="text-xs text-slate-700 space-y-1">
+                            <div x-show="f.finding?.metadata?.test_id" x-text="'Test ID: ' + f.finding?.metadata?.test_id"></div>
+                            <div x-show="f.finding?.metadata?.cve_id" x-text="'CVE: ' + f.finding?.metadata?.cve_id"></div>
+                            <div x-show="f.finding?.metadata?.fix_version" x-text="'Fix version: ' + f.finding?.metadata?.fix_version"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bottom action row -->
+      <div class="flex justify-between items-center mt-6">
+        <p class="text-xs text-slate-600">
+          <span x-text="totalFindings"></span> total findings •
+          <span x-text="severityCounts.Critical || 0"></span> critical •
+          <span x-text="(resultData.exploitResults || []).length"></span> exploited
+        </p>
+        <button
+          @click="goHome()"
+          class="btn-primary flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white"
+        >
+          <svg class="w-4 h-4 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          <span class="relative z-10">Start New Audit</span>
+        </button>
+      </div>
+    </main>
+
+  </div><!-- /x-data -->
+
+
+  <script>
+    function auditApp() {
+      return {
+        // ---- State machine ----
+        screen: 'home',       // 'home' | 'running' | 'results'
+
+        // ---- Form ----
+        sourceTab: 'local',
+        form: {
+          projectPath: '',
+          repoUrl: '',
+          branch: '',
+          noSemgrep: true,
+          exploit: false,
+          iOwnTarget: false,
+          model: 'xiaomi/mimo-v2.5-pro',
+        },
+        formError: '',
+        isStarting: false,
+
+        // ---- Clone ----
+        cloneLoading: false,
+        cloneSuccess: false,
+        cloneStatus: '',
+
+        // ---- Jobs list ----
+        jobs: [],
+        jobsLoading: false,
+
+        // ---- Running ----
+        currentJobId: null,
+        eventSource: null,
+        liveLogs: [],
+        runStats: { files: 0, raw: 0, confirmed: 0, exploitable: 0 },
+        pipelineNodes: [
+          { id: 'recon',       label: 'Recon',           state: 'pending', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
+          { id: 'static',      label: 'Static Analysis', state: 'pending', icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4' },
+          { id: 'dependency',  label: 'Dep Audit',       state: 'pending', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+          { id: 'llm',         label: 'LLM Analysis',    state: 'pending', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+          { id: 'exploit',     label: 'Exploitation',    state: 'pending', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+          { id: 'report',      label: 'Report',          state: 'pending', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+        ],
+
+        // node id → pipeline node id mapping from SSE events
+        nodeMap: {
+          'recon': 'recon',
+          'static_analysis': 'static',
+          'dependency_audit': 'dependency',
+          'llm_analysis': 'llm',
+          'exploitation': 'exploit',
+          'report': 'report',
+        },
+
+        // ---- Results ----
+        resultData: {
+          projectName: '',
+          date: '',
+          model: '',
+          techStack: '',
+          reportPath: '',
+          llmFindings: [],
+          exploitResults: [],
+        },
+        severityFilter: 'all',
+        expandedFindings: new Set(),
+        donutChart: null,
+
+        // ---- Computed ----
+        get filteredFindings() {
+          const findings = this.resultData.llmFindings || [];
+          if (this.severityFilter === 'all') return findings;
+          return findings.filter(f => f.severity === this.severityFilter);
+        },
+        get severityCounts() {
+          const findings = this.resultData.llmFindings || [];
+          return findings.reduce((acc, f) => {
+            acc[f.severity] = (acc[f.severity] || 0) + 1;
+            return acc;
+          }, {});
+        },
+        get totalFindings() {
+          return (this.resultData.llmFindings || []).length;
+        },
+
+        // ---- Lifecycle ----
+        init() {
+          this.loadJobs();
+        },
+
+        // ---- Helpers ----
+        formatDate(iso) {
+          if (!iso) return '–';
+          try {
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          } catch { return iso; }
+        },
+
+        formatFileLine(f) {
+          const file = f.finding?.file || f.file || '';
+          const line = f.finding?.line || f.line || 0;
+          const short = file.split('/').pop() || file;
+          if (!short) return '–';
+          return line ? `${short}:${line}` : short;
+        },
+
+        getExploitResult(f) {
+          const id = f.finding?.id;
+          if (!id) return null;
+          return (this.resultData.exploitResults || []).find(r => r.finding_id === id) || null;
+        },
+
+        addLog(type, message, severity = null) {
+          const now = new Date();
+          const time = now.toTimeString().slice(0, 8);
+          this.liveLogs.push({ type, message, severity, time });
+          this.$nextTick(() => {
+            const el = this.$refs.liveFeed;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        },
+
+        toggleFinding(idx) {
+          const s = new Set(this.expandedFindings);
+          if (s.has(idx)) { s.delete(idx); } else { s.add(idx); }
+          this.expandedFindings = s;
+        },
+
+        resetPipeline() {
+          this.pipelineNodes.forEach(n => { n.state = 'pending'; });
+          this.liveLogs = [];
+          this.runStats = { files: 0, raw: 0, confirmed: 0, exploitable: 0 };
+        },
+
+        setNodeState(nodeId, state) {
+          const id = this.nodeMap[nodeId] || nodeId;
+          const node = this.pipelineNodes.find(n => n.id === id);
+          if (node) node.state = state;
+        },
+
+        goHome() {
+          if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+          }
+          this.screen = 'home';
+          this.severityFilter = 'all';
+          this.expandedFindings = new Set();
+          if (this.donutChart) {
+            this.donutChart.destroy();
+            this.donutChart = null;
+          }
+          this.loadJobs();
+        },
+
+        // ---- Jobs ----
+        async loadJobs() {
+          this.jobsLoading = true;
+          try {
+            const res = await fetch('/api/jobs');
+            if (res.ok) {
+              this.jobs = await res.json();
+            }
+          } catch (e) {
+            console.error('Failed to load jobs:', e);
+          } finally {
+            this.jobsLoading = false;
+          }
+        },
+
+        async loadResult(jobId) {
+          try {
+            const res = await fetch(`/api/audit/${jobId}/result`);
+            if (!res.ok) throw new Error('Failed to load result');
+            const data = await res.json();
+            this.currentJobId = jobId;
+            this.showResults(data);
+          } catch (e) {
+            alert('Failed to load result: ' + e.message);
+          }
+        },
+
+        // ---- Start audit ----
+        async startAudit() {
+          this.formError = '';
+
+          // Validate
+          if (this.sourceTab === 'local') {
+            if (!this.form.projectPath.trim()) {
+              this.formError = 'Please enter a project path.';
+              return;
+            }
+          } else {
+            if (!this.form.repoUrl.trim()) {
+              this.formError = 'Please enter a GitHub repository URL.';
+              return;
+            }
+          }
+
+          if (this.form.exploit && !this.form.iOwnTarget) {
+            this.formError = 'Please confirm you own this target before enabling exploitation.';
+            return;
+          }
+
+          this.isStarting = true;
+
+          try {
+            let projectPath = this.form.projectPath.trim();
+
+            // Clone if GitHub tab
+            if (this.sourceTab === 'github') {
+              this.cloneLoading = true;
+              this.cloneStatus = 'Cloning repository…';
+              this.cloneSuccess = false;
+              try {
+                const cloneRes = await fetch('/api/github/clone', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    repo_url: this.form.repoUrl.trim(),
+                    branch: this.form.branch.trim() || 'main',
+                  }),
+                });
+                if (!cloneRes.ok) {
+                  const err = await cloneRes.json().catch(() => ({}));
+                  throw new Error(err.detail || 'Clone failed');
+                }
+                const cloneData = await cloneRes.json();
+                projectPath = cloneData.path;
+                this.cloneSuccess = true;
+                this.cloneStatus = cloneData.message || 'Cloned successfully';
+              } catch (e) {
+                this.cloneSuccess = false;
+                this.cloneStatus = e.message;
+                this.formError = 'GitHub clone failed: ' + e.message;
+                return;
+              } finally {
+                this.cloneLoading = false;
+              }
+            }
+
+            // Start audit
+            const auditRes = await fetch('/api/audit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project_path: projectPath,
+                no_semgrep: this.form.noSemgrep,
+                exploit: this.form.exploit,
+                i_own_target: this.form.iOwnTarget,
+                model: this.form.model,
+              }),
+            });
+
+            if (!auditRes.ok) {
+              const err = await auditRes.json().catch(() => ({}));
+              throw new Error(err.detail || 'Failed to start audit');
+            }
+
+            const { job_id } = await auditRes.json();
+            this.currentJobId = job_id;
+            this.isStarting = false;
+            this.resetPipeline();
+            this.screen = 'running';
+            this.$nextTick(() => this.startSSE(job_id));
+
+          } catch (e) {
+            this.formError = e.message;
+          } finally {
+            this.isStarting = false;
+          }
+        },
+
+        // ---- SSE streaming ----
+        startSSE(jobId) {
+          if (this.eventSource) this.eventSource.close();
+          const url = `/api/audit/${jobId}/stream`;
+          const es = new EventSource(url);
+          this.eventSource = es;
+
+          es.onopen = () => {
+            this.addLog('info', `Connected to audit stream (job: ${jobId.slice(0,8)}…)`);
+          };
+
+          es.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              this.handleSSEEvent(data);
+            } catch (e) {
+              this.addLog('info', event.data);
+            }
+          };
+
+          es.addEventListener('node_start', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
+          es.addEventListener('node_done', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
+          es.addEventListener('finding', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
+          es.addEventListener('complete', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
+          es.addEventListener('error', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
+
+          es.onerror = (e) => {
+            // If stream ends naturally after complete, don't show error
+            if (this.screen !== 'running') return;
+            this.addLog('error', 'Stream connection lost.');
+          };
+        },
+
+        handleSSEEvent(data) {
+          const type = data.type;
+          const node = data.node || '';
+          const payload = data.data || {};
+
+          if (type === 'node_start') {
+            this.setNodeState(node, 'active');
+            this.addLog('node_start', `Starting: ${node.replace(/_/g, ' ')}`);
+
+            // Update stats from recon data
+            if (node === 'recon' || node === 'static_analysis') {
+              if (payload.source_files) {
+                this.runStats.files = payload.source_files.length || this.runStats.files;
+              }
+            }
+          }
+
+          else if (type === 'node_done') {
+            this.setNodeState(node, 'done');
+            this.addLog('node_done', `Completed: ${node.replace(/_/g, ' ')}`);
+
+            // Update raw findings count
+            if (payload.raw_findings !== undefined) {
+              this.runStats.raw = payload.raw_findings;
+            }
+            if (payload.source_files !== undefined) {
+              this.runStats.files = payload.source_files;
+            }
+            if (payload.llm_findings !== undefined) {
+              this.runStats.confirmed = payload.llm_findings;
+            }
+            if (payload.exploit_results !== undefined) {
+              this.runStats.exploitable = payload.exploit_results;
+            }
+
+            // Mark exploitation as skipped if not running
+            if (node === 'llm_analysis' && !this.form.exploit) {
+              this.setNodeState('exploit', 'skipped');
+            }
+          }
+
+          else if (type === 'finding') {
+            const sev = payload.severity || 'Medium';
+            const issue = payload.issue || payload.finding?.issue || 'Finding';
+            const file = payload.finding?.file ? payload.finding.file.split('/').pop() : '';
+            const msg = file ? `${issue} — ${file}` : issue;
+            this.addLog('finding', msg, sev);
+            this.runStats.raw = (this.runStats.raw || 0) + 1;
+            if (payload.confirmed) {
+              this.runStats.confirmed = (this.runStats.confirmed || 0) + 1;
+            }
+            if (payload.exploitable) {
+              this.runStats.exploitable = (this.runStats.exploitable || 0) + 1;
+            }
+          }
+
+          else if (type === 'complete') {
+            this.addLog('complete', 'Audit complete! Loading results…');
+            // Mark all remaining pending as done
+            this.pipelineNodes.forEach(n => {
+              if (n.state === 'active' || n.state === 'pending') {
+                // leave pending if still pending (not started = skipped or not reached)
+              }
+              if (n.state === 'active') n.state = 'done';
+            });
+            if (this.eventSource) {
+              this.eventSource.close();
+              this.eventSource = null;
+            }
+            // Load result
+            setTimeout(() => this.loadResult(this.currentJobId), 800);
+          }
+
+          else if (type === 'error') {
+            const msg = payload.message || payload.error || 'Unknown error';
+            this.addLog('error', msg);
+            // Mark active node as error (pending visual)
+            const activeNode = this.pipelineNodes.find(n => n.state === 'active');
+            if (activeNode) activeNode.state = 'pending';
+          }
+        },
+
+        // ---- Cancel ----
+        cancelAudit() {
+          if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+          }
+          this.screen = 'home';
+          this.loadJobs();
+        },
+
+        // ---- Show results ----
+        showResults(data) {
+          const findings = data.llm_findings || [];
+          const config = data.config || {};
+
+          // Sort by severity
+          const severityOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+          findings.sort((a, b) => (severityOrder[a.severity] || 99) - (severityOrder[b.severity] || 99));
+
+          this.resultData = {
+            projectName: (config.project_path || '').split('/').pop() || 'Unknown',
+            date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+            model: config.model || 'Unknown',
+            techStack: data.tech_stack?.framework || '',
+            reportPath: data.report_path || '',
+            llmFindings: findings,
+            exploitResults: data.exploit_results || [],
+          };
+
+          this.expandedFindings = new Set();
+          this.severityFilter = 'all';
+          this.screen = 'results';
+
+          // Render chart after DOM updates
+          this.$nextTick(() => {
+            setTimeout(() => this.renderDonut(), 100);
+          });
+        },
+
+        // ---- Donut chart ----
+        renderDonut() {
+          const ctx = document.getElementById('severityChart');
+          if (!ctx) return;
+
+          if (this.donutChart) {
+            this.donutChart.destroy();
+            this.donutChart = null;
+          }
+
+          const counts = this.severityCounts;
+          const critical = counts.Critical || 0;
+          const high = counts.High || 0;
+          const medium = counts.Medium || 0;
+          const low = counts.Low || 0;
+          const total = critical + high + medium + low;
+
+          if (total === 0) return;
+
+          this.donutChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: ['Critical', 'High', 'Medium', 'Low'],
+              datasets: [{
+                data: [critical, high, medium, low],
+                backgroundColor: [
+                  'rgba(239,68,68,0.85)',
+                  'rgba(249,115,22,0.85)',
+                  'rgba(234,179,8,0.85)',
+                  'rgba(34,197,94,0.85)',
+                ],
+                borderColor: [
+                  'rgba(239,68,68,1)',
+                  'rgba(249,115,22,1)',
+                  'rgba(234,179,8,1)',
+                  'rgba(34,197,94,1)',
+                ],
+                borderWidth: 1.5,
+                hoverOffset: 6,
+              }]
+            },
+            options: {
+              responsive: false,
+              cutout: '72%',
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  backgroundColor: 'rgba(15,23,42,0.95)',
+                  borderColor: 'rgba(255,255,255,0.1)',
+                  borderWidth: 1,
+                  titleColor: '#e2e8f0',
+                  bodyColor: '#94a3b8',
+                  padding: 10,
+                  callbacks: {
+                    label: (ctx) => {
+                      const pct = total ? Math.round((ctx.parsed / total) * 100) : 0;
+                      return `  ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                    }
+                  }
+                }
+              },
+              animation: {
+                animateRotate: true,
+                duration: 600,
+                easing: 'easeInOutQuart',
+              }
+            }
+          });
+        },
+      };
+    }
+  </script>
+
+</body>
+</html>
