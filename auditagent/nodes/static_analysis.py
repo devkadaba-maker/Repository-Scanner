@@ -3,22 +3,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
-
-def _tool_path(name: str) -> str:
-    """Return the tool path, preferring the same venv/bin as the current Python."""
-    # Look next to sys.executable first (covers venv installs)
-    candidate = Path(sys.executable).parent / name
-    if candidate.exists():
-        return str(candidate)
-    # Fall back to whatever's on PATH
-    found = shutil.which(name)
-    return found or name
+from auditagent.utils import find_tool
 
 
 SEVERITY_MAP = {
@@ -46,7 +35,7 @@ def _run_bandit(project_path: str) -> list[dict]:
     findings = []
     try:
         result = subprocess.run(
-            [_tool_path("bandit"), "-r", project_path, "-f", "json", "-q"],
+            [find_tool("bandit"), "-r", project_path, "-f", "json", "-q"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -75,8 +64,10 @@ def _run_bandit(project_path: str) -> list[dict]:
         print("[warn] bandit not found — skipping static analysis")
     except subprocess.TimeoutExpired:
         print("[warn] bandit timed out")
-    except (json.JSONDecodeError, Exception) as exc:
-        print(f"[warn] bandit parsing error: {exc}")
+    except json.JSONDecodeError as exc:
+        print(f"[warn] bandit JSON parse error: {exc}")
+    except Exception as exc:
+        print(f"[warn] bandit error: {exc}")
     return findings
 
 
@@ -84,7 +75,7 @@ def _run_semgrep(project_path: str) -> list[dict]:
     findings = []
     try:
         result = subprocess.run(
-            [_tool_path("semgrep"), "--config", "auto", "--json", project_path],
+            [find_tool("semgrep"), "--config", "auto", "--json", project_path],
             capture_output=True,
             text=True,
             timeout=300,
@@ -115,8 +106,10 @@ def _run_semgrep(project_path: str) -> list[dict]:
         print("[warn] semgrep not found — skipping semgrep analysis")
     except subprocess.TimeoutExpired:
         print("[warn] semgrep timed out (it's slow on first run — use --no-semgrep to skip)")
-    except (json.JSONDecodeError, Exception) as exc:
-        print(f"[warn] semgrep parsing error: {exc}")
+    except json.JSONDecodeError as exc:
+        print(f"[warn] semgrep JSON parse error: {exc}")
+    except Exception as exc:
+        print(f"[warn] semgrep error: {exc}")
     return findings
 
 

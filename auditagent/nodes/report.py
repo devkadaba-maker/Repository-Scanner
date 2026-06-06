@@ -61,6 +61,13 @@ def report_node(state: dict) -> dict:
     project_path = state["project_path"]
     config = state.get("config", {})
     output_name = config.get("output", "audit_report.md")
+
+    # Validate output_name has no path separators to prevent traversal
+    if os.sep in output_name or "/" in output_name or "\\" in output_name:
+        raise ValueError(
+            f"--output must be a plain filename (no path separators): {output_name!r}"
+        )
+
     llm_findings: list[dict] = state.get("llm_findings", [])
     exploit_results: list[dict] = state.get("exploit_results", [])
     tech_stack: dict = state.get("tech_stack", {})
@@ -79,13 +86,13 @@ def report_node(state: dict) -> dict:
 
     # Header
     lines += [
-        f"# Security Audit Report",
-        f"",
+        "# Security Audit Report",
+        "",
         f"**Project** : `{project_path}`  ",
         f"**Date**    : {datetime.now().strftime('%Y-%m-%d %H:%M')}  ",
         f"**Framework**: {tech_stack.get('framework', 'unknown')}  ",
         f"**Model**   : {config.get('model', 'xiaomi/mimo-v2.5-pro')}  ",
-        f"",
+        "",
     ]
 
     # Executive summary table
@@ -126,27 +133,26 @@ def report_node(state: dict) -> dict:
                 loc = f"{f['file']}:{f['line']}" if f.get("file") else "(dependency)"
                 lines += [
                     f"#### {f['issue']}",
-                    f"",
-                    f"| Field | Value |",
-                    f"|-------|-------|",
+                    "",
+                    "| Field | Value |",
+                    "|-------|-------|",
                     f"| **ID** | `{fid}` |",
                     f"| **Location** | `{loc}` |",
                     f"| **Source** | {f['source']} |",
                     f"| **Severity** | {sev} |",
                     f"| **Exploitable** | {'Yes' if lf.get('exploitable') else 'No'} |",
-                    f"",
-                    f"**Attack Vector**  ",
+                    "",
+                    "**Attack Vector**  ",
                     lf.get("attack_vector", "_not provided_"),
-                    f"",
-                    f"**Explanation**  ",
+                    "",
+                    "**Explanation**  ",
                     lf.get("explanation", "_not provided_"),
-                    f"",
-                    f"**Suggested Fix**  ",
+                    "",
+                    "**Suggested Fix**  ",
                     lf.get("fix", "_not provided_"),
-                    f"",
+                    "",
                 ]
 
-                # Code snippet
                 snippet = f.get("code_snippet", "")
                 if snippet:
                     lines += [
@@ -160,7 +166,6 @@ def report_node(state: dict) -> dict:
                         "",
                     ]
 
-                # Metadata (CVE refs etc.)
                 meta = f.get("metadata", {})
                 if meta.get("vuln_id") or meta.get("aliases"):
                     refs = ", ".join(filter(None, [meta.get("vuln_id")] + meta.get("aliases", [])))
@@ -168,7 +173,6 @@ def report_node(state: dict) -> dict:
                 if meta.get("fix_versions"):
                     lines += [f"**Fix version(s)**: `{', '.join(meta['fix_versions'])}`", ""]
 
-                # Exploitation block
                 expl = _exploit_block(exploit_results, fid)
                 if expl:
                     lines.append(expl)
@@ -183,7 +187,9 @@ def report_node(state: dict) -> dict:
     ]
 
     report_content = "\n".join(lines)
-    report_path = str(Path(project_path) / output_name)
+
+    # Write to CWD, not inside the audited project directory
+    report_path = str(Path.cwd() / output_name)
     Path(report_path).write_text(report_content, encoding="utf-8")
 
     return {**state, "report_path": report_path}

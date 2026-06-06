@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 
 SKIP_DIRS = {".venv", "venv", "node_modules", ".git", "__pycache__", ".tox", "dist", "build"}
@@ -31,12 +32,10 @@ def _detect_framework(source_files: list[str]) -> str:
 
 def _detect_entrypoint(project_path: str, source_files: list[str]) -> str:
     root = Path(project_path)
-    # prefer project root entrypoints
     for name in ENTRYPOINT_NAMES:
         candidate = root / name
         if candidate.exists():
             return str(candidate)
-    # fall back to first source file
     return source_files[0] if source_files else ""
 
 
@@ -48,8 +47,17 @@ def _parse_requirements(project_path: str) -> list[str]:
     if req_file.exists():
         for line in req_file.read_text(errors="ignore").splitlines():
             line = line.strip()
-            if line and not line.startswith("#") and not line.startswith("-"):
-                deps.append(line)
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("-r ") or line.startswith("-r\t"):
+                # Recursively parse referenced requirement files
+                ref_path = root / line[3:].strip()
+                if ref_path.exists():
+                    deps.extend(_parse_requirements(str(ref_path.parent)))
+                continue
+            if line.startswith("-"):
+                continue  # skip other pip options (-c, -e, etc.)
+            deps.append(line)
 
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
@@ -87,7 +95,6 @@ def recon_node(state: dict) -> dict:
     source_files: list[str] = []
 
     for dirpath, dirnames, filenames in os.walk(project_path):
-        # Prune skipped dirs in-place
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for fname in filenames:
             if fname.endswith(".py"):
@@ -100,7 +107,7 @@ def recon_node(state: dict) -> dict:
     tech_stack = {
         "framework": framework,
         "entrypoint": entrypoint,
-        "python_version": "3.11",
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
         "source_file_count": len(source_files),
     }
 

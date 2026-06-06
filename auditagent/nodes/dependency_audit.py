@@ -4,19 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
-
-def _tool_path(name: str) -> str:
-    candidate = Path(sys.executable).parent / name
-    if candidate.exists():
-        return str(candidate)
-    found = shutil.which(name)
-    return found or name
+from auditagent.utils import find_tool
 
 
 CVSS_TO_SEVERITY = {
@@ -45,14 +37,11 @@ def _run_pip_audit(project_path: str) -> list[dict]:
     req_file = Path(project_path) / "requirements.txt"
     pyproject = Path(project_path) / "pyproject.toml"
 
-    cmd = [_tool_path("pip-audit"), "--format", "json", "--progress-spinner", "off"]
+    cmd = [find_tool("pip-audit"), "--format", "json", "--progress-spinner", "off"]
     if req_file.exists():
         cmd += ["-r", str(req_file)]
     elif pyproject.exists():
         cmd += ["--project", project_path]
-    else:
-        # Fall back to auditing the current environment
-        pass
 
     try:
         result = subprocess.run(
@@ -76,17 +65,11 @@ def _run_pip_audit(project_path: str) -> list[dict]:
             for vuln in dep.get("vulns", []):
                 vuln_id = vuln.get("id", "UNKNOWN")
                 aliases = vuln.get("aliases", [])
-                # Try to extract CVSS from aliases or description
-                score = None
-                for alias in aliases:
-                    if alias.startswith("CVE-"):
-                        pass  # CVSS not in pip-audit JSON directly; use ID severity heuristic
-                severity = vuln.get("fix_versions") and "Medium" or "Medium"
-                # prefer the first CVE alias for severity
+                fix_versions = vuln.get("fix_versions", [])
+                # Use the severity field if pip-audit provides it; fall back to "Medium"
                 sev_label = CVSS_TO_SEVERITY.get(
                     vuln.get("severity", "").lower(), "Medium"
                 )
-                fix_versions = vuln.get("fix_versions", [])
                 findings.append({
                     "id": f"pip-audit-{vuln_id}-{uuid.uuid4().hex[:6]}",
                     "source": "pip-audit",
@@ -108,8 +91,10 @@ def _run_pip_audit(project_path: str) -> list[dict]:
         print("[warn] pip-audit not found — skipping dependency audit")
     except subprocess.TimeoutExpired:
         print("[warn] pip-audit timed out")
-    except (json.JSONDecodeError, Exception) as exc:
-        print(f"[warn] pip-audit parsing error: {exc}")
+    except json.JSONDecodeError as exc:
+        print(f"[warn] pip-audit JSON parse error: {exc}")
+    except Exception as exc:
+        print(f"[warn] pip-audit error: {exc}")
     return findings
 
 

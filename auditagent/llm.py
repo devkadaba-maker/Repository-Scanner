@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
-from typing import Any
 
 from openai import OpenAI
 
-DEFAULT_MODEL = "xiaomi/mimo-v2.5-pro"
+from auditagent.utils import DEFAULT_MODEL
+
 
 # ---------------------------------------------------------------------------
 # Client factory
@@ -34,6 +35,16 @@ def get_client() -> OpenAI:
             "X-Title": "security-audit-agent",
         },
     )
+
+
+def _strip_fence(raw: str) -> str:
+    """Strip markdown code fences from LLM output robustly."""
+    raw = raw.strip()
+    # Match ```[lang]\n...\n```
+    match = re.search(r"```[a-zA-Z]*\s*\n?([\s\S]+?)\n?\s*```", raw)
+    if match:
+        return match.group(1).strip()
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -109,12 +120,7 @@ def analyse_finding(
                 max_tokens=800,
             )
             raw = resp.choices[0].message.content.strip()
-            # Strip markdown fences if the model wraps in ```json … ```
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-                raw = raw.strip()
+            raw = _strip_fence(raw)
             data = json.loads(raw)
             return {
                 "finding": finding,
@@ -129,10 +135,10 @@ def analyse_finding(
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
             else:
-                # Fallback: keep the finding with minimal enrichment
+                # Fallback: mark as unconfirmed so it doesn't inflate severity counts
                 return {
                     "finding": finding,
-                    "confirmed": True,
+                    "confirmed": False,
                     "severity": finding.get("severity", "Medium"),
                     "attack_vector": "Analysis failed – review manually.",
                     "explanation": f"LLM analysis error: {exc}",
@@ -186,6 +192,7 @@ def generate_poc(
     llm_finding: dict,
     model: str = DEFAULT_MODEL,
     client: OpenAI | None = None,
+    retries: int = 2,
 ) -> str:
     """Ask the LLM to generate a non-destructive PoC script for a confirmed finding."""
     if client is None:
@@ -201,20 +208,23 @@ def generate_poc(
         code_snippet=f["code_snippet"] or "(no snippet available)",
     )
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": POC_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.2,
-        max_tokens=1200,
-    )
-    poc = resp.choices[0].message.content.strip()
-    # Strip markdown fences
-    if poc.startswith("```"):
-        poc = poc.split("```")[1]
-        if poc.startswith("python"):
-            poc = poc[6:]
-        poc = poc.strip()
-    return poc
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": POC_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1200,
+            )
+            poc = resp.choices[0].message.content.strip()
+            return _strip_fence(poc)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+
+    raise RuntimeError(f"PoC generation failed after {retries} attempts: {last_exc}") from last_exc

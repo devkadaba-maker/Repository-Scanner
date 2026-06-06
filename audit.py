@@ -28,6 +28,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from auditagent.state import AuditState
+from auditagent.utils import DEFAULT_MODEL
 from auditagent.nodes.recon import recon_node
 from auditagent.nodes.static_analysis import static_analysis_node
 from auditagent.nodes.dependency_audit import dependency_audit_node
@@ -36,8 +37,6 @@ from auditagent.nodes.exploitation import exploitation_node
 from auditagent.nodes.report import report_node
 
 console = Console()
-
-DEFAULT_MODEL = "xiaomi/mimo-v2.5-pro"
 
 
 # ---------------------------------------------------------------------------
@@ -251,7 +250,10 @@ def main() -> None:
 
         for step in graph.stream(initial_state):
             node_name = next(iter(step))
-            label = node_labels.get(node_name, node_name)
+            if node_name not in node_labels:
+                # LangGraph may emit internal metadata events; skip them
+                continue
+            label = node_labels[node_name]
             progress.update(task, description=f"[cyan]{label}[/cyan]")
             final_state = step[node_name]
 
