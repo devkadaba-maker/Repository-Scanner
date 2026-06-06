@@ -117,7 +117,7 @@ def analyse_finding(
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=800,
+                max_tokens=1024,
             )
             raw = resp.choices[0].message.content.strip()
             raw = _strip_fence(raw)
