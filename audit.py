@@ -4,13 +4,16 @@ audit.py — Ethical security audit agent for web & application projects (any la
 
 Usage:
     python audit.py <path-to-project> [--no-semgrep] [--exploit]
-                    [--i-own-this-target] [--model MODEL] [--output FILE]
+                    [--i-own-this-target] [--red-team] [--chain-findings]
+                    [--model MODEL] [--output FILE]
 
 The agent runs a LangGraph pipeline:
     recon → static_analysis → dependency_audit → [route]
         ├─ no findings → report
         └─ findings   → llm_analysis → [route_exploit]
-                            ├─ --exploit & exploitable → exploitation → report
+                            ├─ --exploit & exploitable → exploitation → [route_red_team]
+                            │                                 ├─ --red-team → red_team → report
+                            │                                 └─ else        → report
                             └─ else → report
 """
 
@@ -34,6 +37,7 @@ from auditagent.nodes.static_analysis import static_analysis_node
 from auditagent.nodes.dependency_audit import dependency_audit_node
 from auditagent.nodes.llm_analysis import llm_analysis_node
 from auditagent.nodes.exploitation import exploitation_node
+from auditagent.nodes.red_team import red_team_node, route_red_team
 from auditagent.nodes.report import report_node
 
 console = Console()
@@ -73,6 +77,7 @@ def build_graph() -> StateGraph:
     graph.add_node("dependency_audit", dependency_audit_node)
     graph.add_node("llm_analysis", llm_analysis_node)
     graph.add_node("exploitation", exploitation_node)
+    graph.add_node("red_team", red_team_node)
     graph.add_node("report", report_node)
 
     graph.set_entry_point("recon")
@@ -88,7 +93,12 @@ def build_graph() -> StateGraph:
         route_exploit,
         {"exploitation": "exploitation", "report": "report"},
     )
-    graph.add_edge("exploitation", "report")
+    graph.add_conditional_edges(
+        "exploitation",
+        route_red_team,
+        {"red_team": "red_team", "report": "report"},
+    )
+    graph.add_edge("red_team", "report")
     graph.add_edge("report", END)
 
     return graph.compile()
@@ -174,6 +184,20 @@ def main() -> None:
         help="Acknowledge that you own or are authorised to test this target.",
     )
     parser.add_argument(
+        "--red-team",
+        action="store_true",
+        dest="red_team",
+        help="Run the red-team subgraph after exploitation: plan → generate PoC → "
+             "execute (sandboxed) → assess impact (requires --exploit and --i-own-this-target).",
+    )
+    parser.add_argument(
+        "--chain-findings",
+        action="store_true",
+        dest="chain_findings",
+        help="Within the red-team subgraph, analyse exploited findings for multi-step "
+             "attack chains (requires --red-team).",
+    )
+    parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
         help=f"OpenRouter model ID (default: {DEFAULT_MODEL}).",
@@ -207,10 +231,23 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Red-team flags rely on the exploitation gate — warn (don't block) on misuse
+    if args.red_team and not (args.exploit and args.i_own_target):
+        console.print(
+            "[yellow]Warning:[/yellow] --red-team has no effect without --exploit and "
+            "--i-own-this-target — the subgraph will be skipped."
+        )
+    if args.chain_findings and not args.red_team:
+        console.print(
+            "[yellow]Warning:[/yellow] --chain-findings has no effect without --red-team."
+        )
+
     config = {
         "run_semgrep": not args.no_semgrep,
         "run_exploit": args.exploit,
         "i_own_target": args.i_own_target,
+        "red_team": args.red_team,
+        "chain_findings": args.chain_findings,
         "model": args.model,
         "output": args.output,
     }
@@ -223,6 +260,10 @@ def main() -> None:
         "raw_findings": [],
         "llm_findings": [],
         "exploit_results": [],
+        "attack_plans": [],
+        "poc_scripts": [],
+        "impact_assessments": [],
+        "attack_chains": [],
         "report_path": "",
         "config": config,
     }
@@ -237,6 +278,7 @@ def main() -> None:
         "dependency_audit": "Dependency audit (pip-audit)",
         "llm_analysis": "LLM analysis (confirming findings)",
         "exploitation": "Safe exploitation (PoC validation)",
+        "red_team": "Red team (plan → PoC → execute → assess → chain)",
         "report": "Report generation",
     }
 

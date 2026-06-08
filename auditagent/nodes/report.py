@@ -59,6 +59,91 @@ def _exploit_block(exploit_results: list[dict], finding_id: str) -> str:
     return ""
 
 
+def _red_team_section(state: dict) -> list[str]:
+    """Builds the Red Team section (Attack Plans, Impact Assessments, Attack
+    Chains). Returns [] when the subgraph didn't run, leaving existing reports
+    byte-for-byte unaffected."""
+    attack_plans: list[dict] = state.get("attack_plans", [])
+    impact_assessments: list[dict] = state.get("impact_assessments", [])
+    attack_chains: list[dict] = state.get("attack_chains", [])
+
+    if not attack_plans and not impact_assessments and not attack_chains:
+        return []
+
+    lines: list[str] = ["", "---", "", "## 🎯 Red Team", ""]
+
+    if attack_plans:
+        lines += ["### Attack Plans", ""]
+        for plan in attack_plans:
+            gate = "✅ Cleared for execution" if plan.get("safe_to_execute") else "⛔ Skipped (unsafe to execute)"
+            lines += [
+                f"#### `{plan.get('finding_id', '')}` — {gate}",
+                "",
+                f"**Reasoning**  ",
+                plan.get("reasoning", "_not provided_"),
+                "",
+            ]
+            if plan.get("safe_to_execute"):
+                lines += [
+                    f"**Target**: {plan.get('target_description', '_not provided_')}",
+                    "",
+                    "**Steps**",
+                    "",
+                ]
+                lines += [f"{i + 1}. {step}" for i, step in enumerate(plan.get("steps", []))] or ["_not provided_"]
+                lines += [
+                    "",
+                    f"**Expected outcome**: {plan.get('expected_outcome', '_not provided_')}",
+                    "",
+                ]
+            lines.append("")
+
+    if impact_assessments:
+        lines += [
+            "### Impact Assessments",
+            "",
+            "| Finding | Confirmed Severity | Data at Risk | Systems at Risk | Users at Risk |",
+            "|---------|--------------------|--------------|-----------------|----------------|",
+        ]
+        for ia in impact_assessments:
+            sev = ia.get("severity", "")
+            emoji = SEVERITY_EMOJI.get(sev, "")
+            lines.append(
+                f"| `{ia.get('finding_id', '')}` | {emoji} {sev} "
+                f"| {ia.get('data_at_risk', '_n/a_')} "
+                f"| {ia.get('systems_at_risk', '_n/a_')} "
+                f"| {ia.get('users_at_risk', '_n/a_')} |"
+            )
+        lines.append("")
+        for ia in impact_assessments:
+            if ia.get("summary"):
+                lines += [
+                    f"**`{ia.get('finding_id', '')}` — Impact Summary**  ",
+                    ia["summary"],
+                    "",
+                ]
+
+    if attack_chains:
+        lines += ["### Attack Chains", ""]
+        for i, chain in enumerate(attack_chains, start=1):
+            sev = chain.get("combined_severity", "")
+            emoji = SEVERITY_EMOJI.get(sev, "")
+            ids = ", ".join(f"`{fid}`" for fid in chain.get("finding_ids", []))
+            lines += [
+                f"#### Chain {i} — {emoji} Combined severity: {sev}",
+                "",
+                f"**Findings chained**: {ids}",
+                "",
+                "**Attack Story**  ",
+                chain.get("narrative", "_not provided_"),
+                "",
+                f"**Combined Impact**: {chain.get('combined_impact', '_not provided_')}",
+                "",
+            ]
+
+    return lines
+
+
 def report_node(state: dict) -> dict:
     project_path = state["project_path"]
     config = state.get("config", {})
@@ -181,6 +266,10 @@ def report_node(state: dict) -> dict:
                     lines.append(expl)
 
                 lines += ["---", ""]
+
+    rt_section = _red_team_section(state)
+    if rt_section:
+        lines += rt_section
 
     # Footer
     lines += [
