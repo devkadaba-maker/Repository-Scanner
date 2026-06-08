@@ -935,9 +935,8 @@
                 <th class="text-right pb-3 font-medium w-16"></th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-white/5">
-              <template x-for="(f, idx) in filteredFindings" :key="f._id || idx">
-                <template>
+            <template x-for="(f, idx) in filteredFindings" :key="f._id || idx">
+              <tbody class="divide-y divide-white/5">
                   <!-- Finding row -->
                   <tr
                     @click="toggleFinding(idx)"
@@ -1065,9 +1064,8 @@
                       </div>
                     </td>
                   </tr>
-                </template>
-              </template>
-            </tbody>
+              </tbody>
+            </template>
           </table>
         </div>
       </div>
