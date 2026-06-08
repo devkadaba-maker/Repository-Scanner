@@ -681,6 +681,7 @@ async def github_audit(req: GitHubAuditRequest) -> GitHubAuditResponse:
         "i_own_target": False,
         "model": req.model,
         "output": "audit_report.md",
+        "emit": job.emit,  # forwards live LLM-stream events to the SSE feed
         # GitHub-specific extras consumed by github_recon_node
         "github_token": req.github_token or os.environ.get("GITHUB_TOKEN") or None,
         "github_url": req.repo_url,
@@ -768,6 +769,7 @@ async def start_audit(req: StartAuditRequest) -> StartAuditResponse:
         "i_own_target": req.i_own_target,
         "model": req.model,
         "output": output,
+        "emit": job.emit,  # forwards live LLM-stream events to the SSE feed
     }
 
     initial_state: AuditState = {

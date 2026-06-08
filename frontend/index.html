@@ -685,29 +685,54 @@
             Waiting for events…
           </div>
           <template x-for="(log, idx) in liveLogs" :key="idx">
-            <div
-              :class="{
-                'text-red-400': log.severity === 'Critical',
-                'text-orange-400': log.severity === 'High',
-                'text-yellow-400': log.severity === 'Medium',
-                'text-green-400': log.severity === 'Low' || log.type === 'node_done',
-                'text-blue-400': log.type === 'node_start',
-                'text-slate-400': log.type === 'info',
-                'text-red-300': log.type === 'error',
-                'text-violet-400': log.type === 'complete',
-              }"
-              class="log-entry flex items-start gap-2 py-0.5"
-            >
-              <span class="text-slate-700 flex-shrink-0 select-none" x-text="log.time"></span>
-              <span class="flex-shrink-0">
-                <span x-show="log.type === 'finding'">[FINDING]</span>
-                <span x-show="log.type === 'node_start'">[START]</span>
-                <span x-show="log.type === 'node_done'">[DONE]</span>
-                <span x-show="log.type === 'complete'">[COMPLETE]</span>
-                <span x-show="log.type === 'error'">[ERROR]</span>
-                <span x-show="log.type === 'info'">[INFO]</span>
-              </span>
-              <span x-text="log.message" class="leading-relaxed"></span>
+            <div>
+              <!-- Regular log entry -->
+              <div
+                x-show="log.type !== 'llm_stream'"
+                :class="{
+                  'text-red-400': log.severity === 'Critical',
+                  'text-orange-400': log.severity === 'High',
+                  'text-yellow-400': log.severity === 'Medium',
+                  'text-green-400': log.severity === 'Low' || log.type === 'node_done',
+                  'text-blue-400': log.type === 'node_start',
+                  'text-slate-400': log.type === 'info',
+                  'text-red-300': log.type === 'error',
+                  'text-violet-400': log.type === 'complete',
+                }"
+                class="log-entry flex items-start gap-2 py-0.5"
+              >
+                <span class="text-slate-700 flex-shrink-0 select-none" x-text="log.time"></span>
+                <span class="flex-shrink-0">
+                  <span x-show="log.type === 'finding'">[FINDING]</span>
+                  <span x-show="log.type === 'node_start'">[START]</span>
+                  <span x-show="log.type === 'node_done'">[DONE]</span>
+                  <span x-show="log.type === 'complete'">[COMPLETE]</span>
+                  <span x-show="log.type === 'error'">[ERROR]</span>
+                  <span x-show="log.type === 'info'">[INFO]</span>
+                </span>
+                <span x-text="log.message" class="leading-relaxed"></span>
+              </div>
+
+              <!-- LLM streaming entry — shows the model's response as it's generated -->
+              <div
+                x-show="log.type === 'llm_stream'"
+                class="log-entry-stream my-1 py-1.5 px-2 rounded bg-slate-900/50 border border-cyan-500/10"
+              >
+                <div class="flex items-center gap-2 text-cyan-400 mb-1">
+                  <span class="text-slate-700 select-none flex-shrink-0" x-text="log.time"></span>
+                  <span class="flex-shrink-0">[LLM]</span>
+                  <span class="text-slate-400 truncate" x-text="log.issue"></span>
+                  <span
+                    x-show="log.streaming"
+                    class="inline-block w-1.5 h-3 bg-cyan-400 animate-pulse flex-shrink-0"
+                  ></span>
+                  <span x-show="!log.streaming" class="text-slate-600 flex-shrink-0">[done]</span>
+                </div>
+                <p
+                  class="text-slate-500 whitespace-pre-wrap leading-relaxed pl-2 border-l border-slate-700/50 max-h-40 overflow-y-auto"
+                  x-text="log.message"
+                ></p>
+              </div>
             </div>
           </template>
         </div>
@@ -1100,6 +1125,7 @@
         currentJobId: null,
         eventSource: null,
         liveLogs: [],
+        llmStreamIndex: {},  // finding_id -> index into liveLogs, for in-place streaming updates
         runStats: { files: 0, raw: 0, confirmed: 0, exploitable: 0 },
         pipelineNodes: [
           { id: 'recon',       label: 'Recon',           state: 'pending', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
@@ -1198,6 +1224,7 @@
         resetPipeline() {
           this.pipelineNodes.forEach(n => { n.state = 'pending'; });
           this.liveLogs = [];
+          this.llmStreamIndex = {};
           this.runStats = { files: 0, raw: 0, confirmed: 0, exploitable: 0 };
         },
 
@@ -1426,18 +1453,51 @@
           }
 
           else if (type === 'finding') {
-            const sev = payload.severity || 'Medium';
-            const issue = payload.issue || payload.finding?.issue || 'Finding';
-            const file = payload.finding?.file ? payload.finding.file.split('/').pop() : '';
+            // NOTE: 'finding' events are flat on `data` (not nested under
+            // `data.data` like node_start/node_done) — and the server only
+            // emits them for *confirmed* findings, so every event here
+            // represents one confirmed finding.
+            const sev = data.severity || 'Medium';
+            const issue = data.issue || 'Finding';
+            const file = data.file ? data.file.split('/').pop() : '';
             const msg = file ? `${issue} — ${file}` : issue;
             this.addLog('finding', msg, sev);
-            this.runStats.raw = (this.runStats.raw || 0) + 1;
-            if (payload.confirmed) {
-              this.runStats.confirmed = (this.runStats.confirmed || 0) + 1;
-            }
-            if (payload.exploitable) {
+            this.runStats.confirmed = (this.runStats.confirmed || 0) + 1;
+            if (data.exploitable) {
               this.runStats.exploitable = (this.runStats.exploitable || 0) + 1;
             }
+          }
+
+          else if (type === 'llm_stream_start') {
+            const idx = this.liveLogs.length;
+            this.llmStreamIndex[data.finding_id] = idx;
+            this.liveLogs.push({
+              type: 'llm_stream',
+              message: '',
+              issue: data.issue || 'Finding',
+              severity: null,
+              streaming: true,
+              time: new Date().toTimeString().slice(0, 8),
+            });
+            this.$nextTick(() => {
+              const el = this.$refs.liveFeed;
+              if (el) el.scrollTop = el.scrollHeight;
+            });
+          }
+
+          else if (type === 'llm_stream_chunk') {
+            const idx = this.llmStreamIndex[data.finding_id];
+            if (idx !== undefined && this.liveLogs[idx]) {
+              this.liveLogs[idx].message += (data.chunk || '');
+            }
+          }
+
+          else if (type === 'llm_stream_end') {
+            const idx = this.llmStreamIndex[data.finding_id];
+            if (idx !== undefined && this.liveLogs[idx]) {
+              this.liveLogs[idx].streaming = false;
+            }
+            delete this.llmStreamIndex[data.finding_id];
           }
 
           else if (type === 'complete') {

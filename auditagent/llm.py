@@ -117,8 +117,14 @@ def analyse_finding(
     model: str = DEFAULT_MODEL,
     client=None,  # ignored; kept for call-site compatibility
     retries: int = 2,
+    on_chunk=None,  # optional callable(str) — receives streamed text deltas as they arrive
 ) -> dict:
-    """Run the analysis chain for a single Finding. Returns an LLMFinding dict."""
+    """Run the analysis chain for a single Finding. Returns an LLMFinding dict.
+
+    When ``on_chunk`` is given, the LLM response is streamed token-by-token and
+    each text delta is passed to it as it arrives (e.g. to forward live
+    progress to a UI), in addition to being assembled into the final result.
+    """
     llm = get_llm(model=model, temperature=0.1)
     chain = _analysis_prompt | llm | _str_parser
 
@@ -134,7 +140,15 @@ def analyse_finding(
 
     for attempt in range(retries):
         try:
-            raw = chain.invoke(inputs)
+            if on_chunk is not None:
+                pieces: list[str] = []
+                for chunk in chain.stream(inputs):
+                    if chunk:
+                        pieces.append(chunk)
+                        on_chunk(chunk)
+                raw = "".join(pieces)
+            else:
+                raw = chain.invoke(inputs)
             data = _parse_json(raw)
             return {
                 "finding": finding,

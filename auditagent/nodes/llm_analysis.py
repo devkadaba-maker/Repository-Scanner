@@ -16,6 +16,7 @@ def llm_analysis_node(state: dict) -> dict:
     raw_findings: list[dict] = state.get("raw_findings", [])
     config = state.get("config", {})
     model = config.get("model", DEFAULT_MODEL)
+    emit = config.get("emit")  # optional callable(dict) — forwards live SSE events to the UI
 
     if not raw_findings:
         return {**state, "llm_findings": []}
@@ -29,16 +30,44 @@ def llm_analysis_node(state: dict) -> dict:
 
     llm_findings: list[dict] = []
 
+    def _make_on_chunk(finding: dict):
+        fid = finding["id"]
+        started = {"done": False}
+
+        def _on_chunk(chunk: str):
+            if not started["done"]:
+                started["done"] = True
+                emit({
+                    "type": "llm_stream_start",
+                    "finding_id": fid,
+                    "issue": finding.get("issue", ""),
+                    "source": finding.get("source", ""),
+                })
+            emit({"type": "llm_stream_chunk", "finding_id": fid, "chunk": chunk})
+
+        return _on_chunk
+
     # Each thread gets its own ChatOpenAI instance (not thread-safe to share)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(analyse_finding, f, model): f
+            pool.submit(
+                analyse_finding, f, model,
+                on_chunk=_make_on_chunk(f) if emit else None,
+            ): f
             for f in raw_findings
         }
         for future in as_completed(futures):
             orig_finding = futures[future]
             try:
-                llm_findings.append(future.result())
+                result = future.result()
+                llm_findings.append(result)
+                if emit:
+                    emit({
+                        "type": "llm_stream_end",
+                        "finding_id": orig_finding["id"],
+                        "confirmed": result.get("confirmed", False),
+                        "severity": result.get("severity", "Medium"),
+                    })
             except Exception as exc:
                 llm_findings.append({
                     "finding": orig_finding,
@@ -49,6 +78,13 @@ def llm_analysis_node(state: dict) -> dict:
                     "fix": "Review the code manually.",
                     "exploitable": False,
                 })
+                if emit:
+                    emit({
+                        "type": "llm_stream_end",
+                        "finding_id": orig_finding["id"],
+                        "confirmed": False,
+                        "severity": orig_finding.get("severity", "Medium"),
+                    })
 
     order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
     llm_findings.sort(key=lambda x: order.get(x.get("severity", "Low"), 3))
