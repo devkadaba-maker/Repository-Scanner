@@ -451,7 +451,6 @@ class GitHubCloneRequest(BaseModel):
 class GitHubCloneResponse(BaseModel):
     path: str
     repo_info: dict
-    job_id: str
 
 
 class GitHubAuditRequest(BaseModel):
@@ -587,8 +586,8 @@ async def github_info(req: GitHubInfoRequest) -> JSONResponse:
 @app.post("/api/github/clone", response_model=GitHubCloneResponse)
 async def github_clone_full(req: GitHubCloneRequest) -> GitHubCloneResponse:
     """
-    Clone a GitHub repository into a temporary directory, start an audit job,
-    and return the clone path, repo metadata, and the new job_id.
+    Clone a GitHub repository into a temporary directory and return the
+    clone path and repo metadata.
 
     The audit is *not* started automatically by this endpoint — use
     ``POST /api/github/audit`` for a one-shot clone-and-audit operation.
@@ -607,19 +606,12 @@ async def github_clone_full(req: GitHubCloneRequest) -> GitHubCloneResponse:
     except GitHubError as exc:
         raise _github_http_error(exc) from exc
 
-    # Register a new job so the caller can wire up SSE streaming
-    job_id = str(uuid.uuid4())
-    job = JobStatus(job_id=job_id, project_path=clone_result["path"])
-    job.tmp_dir = clone_result["path"]
-    _register_job(job)
-
     # Promote CloneResult → RepoInfo shape (drop the path key)
     repo_info_dict = {k: v for k, v in clone_result.items() if k != "path"}
 
     return GitHubCloneResponse(
         path=clone_result["path"],
         repo_info=repo_info_dict,
-        job_id=job_id,
     )
 
 
