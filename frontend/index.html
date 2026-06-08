@@ -232,7 +232,7 @@
           </div>
           <div>
             <h1 class="text-base font-bold text-white leading-tight">Security Audit Agent</h1>
-            <p class="text-xs text-slate-400 leading-tight">Ethical vulnerability scanning for Python projects</p>
+            <p class="text-xs text-slate-400 leading-tight">Ethical vulnerability scanning for any codebase</p>
           </div>
         </div>
 
@@ -271,7 +271,7 @@
           Powered by MiMo-V2.5-Pro via OpenRouter
         </div>
         <h2 class="text-4xl font-extrabold gradient-text mb-3">Start a Security Audit</h2>
-        <p class="text-slate-400 text-base max-w-xl mx-auto">Scan your Python projects for vulnerabilities with AI-powered analysis. Find, confirm, and understand security issues before attackers do.</p>
+        <p class="text-slate-400 text-base max-w-xl mx-auto">Scan your codebase — in any language — for vulnerabilities with AI-powered analysis. Find, confirm, and understand security issues before attackers do.</p>
       </div>
 
       <!-- Main form card -->
@@ -313,7 +313,7 @@
           </div>
           <p class="text-xs text-slate-500 mt-2 flex items-center gap-1">
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Enter the absolute path to a Python project directory (e.g. Flask, FastAPI, Django app)
+            Enter the absolute path to a project directory (any language — Flask, Express, Spring, Rails, etc.)
           </p>
         </div>
 
@@ -406,7 +406,7 @@
                 x-model="form.model"
                 class="input-field w-full bg-slate-800/80 border border-white/10 rounded-lg px-3 py-2 text-sm text-white transition-all duration-200 cursor-pointer"
               >
-                <option value="xiaomi/mimo-v2.5-pro">MiMo-V2.5-Pro (default)</option>
+                <option value="deepseek/deepseek-v4-flash">DeepSeek V4 Flash (default)</option>
                 <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
                 <option value="anthropic/claude-3-haiku">Claude 3 Haiku (fast)</option>
                 <option value="openai/gpt-4o">GPT-4o</option>
@@ -1079,10 +1079,10 @@
           projectPath: '',
           repoUrl: '',
           branch: '',
-          noSemgrep: true,
+          noSemgrep: false,
           exploit: false,
           iOwnTarget: false,
-          model: 'xiaomi/mimo-v2.5-pro',
+          model: 'deepseek/deepseek-v4-flash',
         },
         formError: '',
         isStarting: false,
@@ -1411,9 +1411,10 @@
             if (payload.source_files !== undefined) {
               this.runStats.files = payload.source_files;
             }
-            if (payload.llm_findings !== undefined) {
-              this.runStats.confirmed = payload.llm_findings;
-            }
+            // NOTE: do not overwrite runStats.confirmed here — payload.llm_findings
+            // is the raw count of findings *analyzed*, not the count *confirmed*.
+            // The true confirmed count is built incrementally from 'finding' events
+            // below, which the server only emits for confirmed findings.
             if (payload.exploit_results !== undefined) {
               this.runStats.exploitable = payload.exploit_results;
             }

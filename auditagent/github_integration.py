@@ -428,7 +428,9 @@ class GitHubIntegration:
         # ------------------------------------------------------------------
         effective_branch = branch
         if effective_branch is None and repo_info is not None:
-            effective_branch = repo_info.get("default_branch") or "main"
+            # Only set if we know the actual default branch from the API —
+            # falling back to "main" would break repos that use "master" etc.
+            effective_branch = repo_info.get("default_branch") or None
 
         clone_url = normalized_url
         if self._token:
@@ -445,21 +447,33 @@ class GitHubIntegration:
         self._managed_dirs.append(str(dest_path))
 
         # ------------------------------------------------------------------
-        # Step 5: git clone
+        # Step 5: git clone — try with explicit branch, fall back to HEAD
+        # The GitHub API's default_branch can lag behind or differ from what
+        # git actually sees on the remote (e.g. API says "main", remote has
+        # "master"). Always retry without --branch on branch-not-found errors.
         # ------------------------------------------------------------------
-        cmd = ["git", "clone", "--depth", "1"]
-        if effective_branch:
-            cmd += ["--branch", effective_branch]
-        cmd += [clone_url, str(dest_path)]
-
-        try:
-            result = subprocess.run(
+        def _run_clone(extra_branch_args: list[str]) -> subprocess.CompletedProcess:
+            cmd = ["git", "clone", "--depth", "1"] + extra_branch_args + [clone_url, str(dest_path)]
+            return subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=180,
-                env={**os.environ},  # inherit env so git credential helpers work
+                env={**os.environ},
             )
+
+        try:
+            if effective_branch:
+                result = _run_clone(["--branch", effective_branch])
+                if result.returncode != 0 and (
+                    "Remote branch" in result.stderr or "not found in upstream" in result.stderr
+                ):
+                    # Branch name from API doesn't match remote — clone HEAD instead
+                    shutil.rmtree(str(dest_path), ignore_errors=True)
+                    dest_path.mkdir(parents=True, exist_ok=True)
+                    result = _run_clone([])
+            else:
+                result = _run_clone([])
         except subprocess.TimeoutExpired as exc:
             self._safe_rmtree(str(dest_path))
             raise GitHubError(
@@ -475,7 +489,6 @@ class GitHubIntegration:
         if result.returncode != 0:
             self._safe_rmtree(str(dest_path))
             stderr = result.stderr.strip()
-            # Provide helpful messages for common failure modes
             if "Repository not found" in stderr or "does not exist" in stderr:
                 raise GitHubError(
                     f"Repository '{owner}/{repo_name}' not found. "

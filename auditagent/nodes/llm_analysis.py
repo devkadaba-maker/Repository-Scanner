@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from auditagent.llm import analyse_finding, get_llm
+from auditagent.llm import analyse_finding
 from auditagent.utils import DEFAULT_MODEL
 
 
-MAX_WORKERS = 4
-MAX_FINDINGS = 50  # cost guard
+MAX_WORKERS = 10  # DeepSeek handles high concurrency well
+MAX_FINDINGS = 200  # cost guard — raised so thorough scans aren't truncated
 
 
 def llm_analysis_node(state: dict) -> dict:
@@ -23,7 +23,7 @@ def llm_analysis_node(state: dict) -> dict:
     if len(raw_findings) > MAX_FINDINGS:
         print(
             f"[warn] {len(raw_findings)} findings — capping LLM analysis at {MAX_FINDINGS} "
-            "to control cost. Use --no-semgrep or fix findings incrementally."
+            "to control cost. Fix findings incrementally to bring this below the cap."
         )
         raw_findings = raw_findings[:MAX_FINDINGS]
 

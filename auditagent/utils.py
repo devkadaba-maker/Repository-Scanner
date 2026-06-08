@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-DEFAULT_MODEL = "xiaomi/mimo-v2.5-pro"
+DEFAULT_MODEL = "deepseek/deepseek-v4-flash"
 
 
 def find_tool(name: str) -> str:

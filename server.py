@@ -17,9 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
 import sys
-import tempfile
 import threading
 import time
 import uuid
@@ -36,7 +34,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,7 +50,6 @@ from auditagent.github_integration import (
     GitHubRateLimitError,
     GitHubNotPythonError,
     CloneResult,
-    RepoInfo,
 )
 
 # ---------------------------------------------------------------------------
@@ -912,6 +909,34 @@ async def list_jobs() -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/report  — download a generated report file
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/report")
+async def get_report(path: str) -> FileResponse:
+    """Serve a generated audit_report.md for download.
+
+    Restricted to .md files inside the server's working directory — reports
+    are always written to Path.cwd() by report_node, never inside the
+    audited project — to prevent path traversal.
+    """
+    report_path = Path(path).resolve()
+    cwd = Path.cwd().resolve()
+    if cwd not in report_path.parents and report_path != cwd:
+        raise HTTPException(status_code=403, detail="Report path is outside the server's working directory.")
+    if report_path.suffix != ".md":
+        raise HTTPException(status_code=400, detail="Only .md report files can be downloaded.")
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail=f"Report not found: {report_path}")
+    return FileResponse(
+        path=str(report_path),
+        media_type="text/markdown",
+        filename=report_path.name,
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /api/audit/{job_id}  — single job status
 # ---------------------------------------------------------------------------
 
@@ -934,8 +959,8 @@ async def on_startup() -> None:
     print("=" * 60)
     print("  Security Audit Agent — Web Server")
     print("=" * 60)
-    print(f"  URL        : http://localhost:7860")
-    print(f"  API docs   : http://localhost:7860/docs")
+    print("  URL        : http://localhost:7860")
+    print("  API docs   : http://localhost:7860/docs")
     print(f"  Model      : {DEFAULT_MODEL}")
     print(f"  API key    : {'set' if os.environ.get('OPENROUTER_API_KEY') else 'NOT SET — audits will fail'}")
     print("=" * 60)

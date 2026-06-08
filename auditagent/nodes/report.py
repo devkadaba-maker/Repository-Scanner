@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from auditagent.utils import DEFAULT_MODEL
+
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
 
@@ -90,8 +92,9 @@ def report_node(state: dict) -> dict:
         "",
         f"**Project** : `{project_path}`  ",
         f"**Date**    : {datetime.now().strftime('%Y-%m-%d %H:%M')}  ",
+        f"**Language** : {', '.join(tech_stack.get('languages', [])) or tech_stack.get('language', 'unknown')}  ",
         f"**Framework**: {tech_stack.get('framework', 'unknown')}  ",
-        f"**Model**   : {config.get('model', 'xiaomi/mimo-v2.5-pro')}  ",
+        f"**Model**   : {config.get('model', DEFAULT_MODEL)}  ",
         "",
     ]
 

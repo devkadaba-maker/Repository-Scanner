@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-audit.py — Ethical security audit agent for Python web projects.
+audit.py — Ethical security audit agent for web & application projects (any language).
 
 Usage:
     python audit.py <path-to-project> [--no-semgrep] [--exploit]
@@ -135,6 +135,7 @@ def print_summary(final_state: dict) -> None:
     info_table = Table(show_header=False, box=None, padding=(0, 1))
     info_table.add_column("Key", style="dim")
     info_table.add_column("Value")
+    info_table.add_row("Language", ", ".join(tech_stack.get("languages", [])) or tech_stack.get("language", "unknown"))
     info_table.add_row("Framework", tech_stack.get("framework", "unknown"))
     info_table.add_row("Source files", str(tech_stack.get("source_file_count", 0)))
     if report_path:
@@ -151,11 +152,11 @@ def main() -> None:
     load_dotenv()
 
     parser = argparse.ArgumentParser(
-        description="Ethical security audit agent for Python web projects.",
+        description="Ethical security audit agent for web & application projects (any language).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("project_path", help="Path to the Python project to audit.")
+    parser.add_argument("project_path", help="Path to the project to audit (any language).")
     parser.add_argument(
         "--no-semgrep",
         action="store_true",

@@ -1,6 +1,6 @@
 # security-audit-agent
 
-A LangGraph-based ethical security audit agent for Python web projects (Flask / FastAPI / Django).
+A LangGraph-based ethical security audit agent for web & application projects, in any language (Python, JavaScript/TypeScript, Go, Java, Ruby, PHP, and more).
 
 ## What it does
 
@@ -21,7 +21,7 @@ recon → static_analysis → dependency_audit → [route]
 5. **Exploitation** — safe local PoC validation (flag-gated, localhost-only)
 6. **Report** — Markdown report grouped by severity
 
-LLM: [MiMo-V2.5-Pro](https://openrouter.ai/xiaomi/mimo-v2.5-pro) via OpenRouter ($0.44/$0.87 per 1M tokens).
+LLM: [DeepSeek V4 Flash](https://openrouter.ai/deepseek/deepseek-v4-flash) via OpenRouter.
 
 ## Setup
 
@@ -51,7 +51,7 @@ python audit.py path/to/your/project
 python audit.py path/to/your/project --exploit --i-own-this-target
 
 # Custom model or output file
-python audit.py path/to/your/project --model xiaomi/mimo-v2.5-pro --output report.md
+python audit.py path/to/your/project --model deepseek/deepseek-v4-flash --output report.md
 ```
 
 The agent prints a Rich summary table to stdout and writes `audit_report.md` to the project root.

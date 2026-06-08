@@ -10,11 +10,15 @@ import json
 import os
 import time
 
-from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+import re
+
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from auditagent.utils import DEFAULT_MODEL
+
+REQUEST_TIMEOUT = 30  # seconds per LLM call — DeepSeek is fast, fail quickly
 
 
 def get_llm(model: str = DEFAULT_MODEL, temperature: float = 0.1) -> ChatOpenAI:
@@ -29,7 +33,11 @@ def get_llm(model: str = DEFAULT_MODEL, temperature: float = 0.1) -> ChatOpenAI:
         openai_api_key=api_key,
         openai_api_base="https://openrouter.ai/api/v1",
         temperature=temperature,
-        max_tokens=1024,
+        # DeepSeek V4 is a reasoning model — hidden "thinking" tokens eat into
+        # max_tokens before the visible answer, so the budget must cover both
+        # or the JSON response comes back empty under load.
+        max_tokens=4096,
+        request_timeout=REQUEST_TIMEOUT,
         model_kwargs={
             "extra_headers": {
                 "HTTP-Referer": "https://github.com/security-audit-agent",
@@ -37,6 +45,15 @@ def get_llm(model: str = DEFAULT_MODEL, temperature: float = 0.1) -> ChatOpenAI:
             }
         },
     )
+
+
+def _parse_json(raw: str) -> dict:
+    """Extract JSON from LLM output, stripping markdown fences if present."""
+    raw = raw.strip()
+    match = re.search(r"```(?:json)?\s*\n?([\s\S]+?)\n?\s*```", raw)
+    if match:
+        raw = match.group(1).strip()
+    return json.loads(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +69,10 @@ def get_client():
 
 _ANALYSIS_SYSTEM = """\
 You are an expert application security engineer performing an authorised,
-ethical security audit of a Python web application owned by the requester.
+ethical security audit of a codebase owned by the requester. The project may be
+written in any language (Python, JavaScript/TypeScript, Go, Java, Ruby, PHP,
+Rust, C/C++, etc.) — adapt your analysis to the language and framework shown in
+the finding.
 
 Your task: analyse the provided security finding and return a structured JSON
 assessment. Be precise, technical, and actionable."""
@@ -66,7 +86,7 @@ _ANALYSIS_HUMAN = """\
 - Raw severity: {severity}
 
 ## Code snippet
-```python
+```
 {code_snippet}
 ```
 
@@ -89,16 +109,18 @@ _analysis_prompt = ChatPromptTemplate.from_messages([
     ("human", _ANALYSIS_HUMAN),
 ])
 
+_str_parser = StrOutputParser()
+
 
 def analyse_finding(
     finding: dict,
     model: str = DEFAULT_MODEL,
     client=None,  # ignored; kept for call-site compatibility
-    retries: int = 3,
+    retries: int = 2,
 ) -> dict:
     """Run the analysis chain for a single Finding. Returns an LLMFinding dict."""
     llm = get_llm(model=model, temperature=0.1)
-    chain = _analysis_prompt | llm | JsonOutputParser()
+    chain = _analysis_prompt | llm | _str_parser
 
     inputs = {
         "source": finding["source"],
@@ -112,7 +134,8 @@ def analyse_finding(
 
     for attempt in range(retries):
         try:
-            data = chain.invoke(inputs)
+            raw = chain.invoke(inputs)
+            data = _parse_json(raw)
             return {
                 "finding": finding,
                 "confirmed": bool(data.get("confirmed", True)),
@@ -143,16 +166,18 @@ def analyse_finding(
 
 _POC_SYSTEM = """\
 You are an expert penetration tester performing an authorised, ethical security
-audit of a Python web application the requester owns and has authorised for
-testing. Your task is to produce a NON-DESTRUCTIVE proof-of-concept that
-confirms exploitability of the given vulnerability against a locally running
-instance.
+audit of an application the requester owns and has authorised for testing — it
+may be written in any language or framework. Your task is to produce a
+NON-DESTRUCTIVE proof-of-concept that confirms exploitability of the given
+vulnerability against a locally running instance.
 
 Rules:
 - Target: 127.0.0.1 only (substituted via {{host}}:{{port}} placeholders).
 - No data deletion, modification, or exfiltration beyond a single benign read.
 - No DoS payloads, no binary exploit shellcode.
-- Output a self-contained Python snippet using `httpx` (already installed)."""
+- Output a self-contained Python snippet using `httpx` (already installed) that
+  drives the PoC over HTTP — regardless of what language the target app is
+  written in, the PoC client itself is always Python."""
 
 _POC_HUMAN = """\
 ## Confirmed vulnerability
@@ -163,7 +188,7 @@ _POC_HUMAN = """\
 - Severity    : {severity}
 
 ## Code snippet
-```python
+```
 {code_snippet}
 ```
 

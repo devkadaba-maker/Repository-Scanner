@@ -7,15 +7,50 @@ import re
 import sys
 from pathlib import Path
 
-SKIP_DIRS = {".venv", "venv", "node_modules", ".git", "__pycache__", ".tox", "dist", "build"}
+SKIP_DIRS = {
+    ".venv", "venv", "node_modules", ".git", "__pycache__", ".tox", "dist", "build",
+    "vendor", "target", ".next", ".gradle", "bin", "obj",
+}
+
+# Extension → language, used for source-file collection and the language breakdown
+# in tech_stack. Drives which Python-only tools (bandit, pip-audit) are gated on.
+LANGUAGE_EXTENSIONS = {
+    ".py": "python",
+    ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".go": "go",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".rb": "ruby",
+    ".php": "php",
+    ".cs": "csharp",
+    ".rs": "rust",
+    ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".cc": "cpp", ".hpp": "cpp",
+    ".swift": "swift",
+    ".scala": "scala",
+}
 
 FRAMEWORK_MARKERS = {
     "flask": re.compile(r"(?:from|import)\s+flask", re.I),
     "fastapi": re.compile(r"(?:from|import)\s+fastapi", re.I),
     "django": re.compile(r"(?:from|import)\s+django|DJANGO_SETTINGS_MODULE", re.I),
+    "express": re.compile(r"require\(['\"]express['\"]\)|from\s+['\"]express['\"]", re.I),
+    "next.js": re.compile(r"from\s+['\"]next(?:/|['\"])", re.I),
+    "react": re.compile(r"from\s+['\"]react['\"]|require\(['\"]react['\"]\)", re.I),
+    "nestjs": re.compile(r"from\s+['\"]@nestjs/", re.I),
+    "spring": re.compile(r"org\.springframework", re.I),
+    "rails": re.compile(r"Rails\.application|ActionController::Base", re.I),
+    "laravel": re.compile(r"Illuminate\\\\|use\s+Illuminate", re.I),
+    "gin": re.compile(r"github\.com/gin-gonic/gin", re.I),
+    "actix": re.compile(r"actix_web", re.I),
 }
 
-ENTRYPOINT_NAMES = ["app.py", "main.py", "wsgi.py", "asgi.py", "manage.py", "run.py", "server.py"]
+ENTRYPOINT_NAMES = [
+    "app.py", "main.py", "wsgi.py", "asgi.py", "manage.py", "run.py", "server.py",
+    "index.js", "index.ts", "server.js", "server.ts", "app.js", "app.ts", "main.go",
+    "Main.java", "Program.cs", "main.rs",
+]
 
 
 def _detect_framework(source_files: list[str]) -> str:
@@ -93,12 +128,20 @@ def _parse_requirements(project_path: str) -> list[str]:
 def recon_node(state: dict) -> dict:
     project_path = os.path.abspath(state["project_path"])
     source_files: list[str] = []
+    language_counts: dict[str, int] = {}
 
     for dirpath, dirnames, filenames in os.walk(project_path):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for fname in filenames:
-            if fname.endswith(".py"):
-                source_files.append(os.path.join(dirpath, fname))
+            ext = Path(fname).suffix.lower()
+            lang = LANGUAGE_EXTENSIONS.get(ext)
+            if lang:
+                fpath = os.path.join(dirpath, fname)
+                source_files.append(fpath)
+                language_counts[lang] = language_counts.get(lang, 0) + 1
+
+    languages = sorted(language_counts, key=language_counts.get, reverse=True)
+    primary_language = languages[0] if languages else "unknown"
 
     framework = _detect_framework(source_files)
     entrypoint = _detect_entrypoint(project_path, source_files)
@@ -107,6 +150,9 @@ def recon_node(state: dict) -> dict:
     tech_stack = {
         "framework": framework,
         "entrypoint": entrypoint,
+        "language": primary_language,
+        "languages": languages,
+        "language_counts": language_counts,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
         "source_file_count": len(source_files),
     }
