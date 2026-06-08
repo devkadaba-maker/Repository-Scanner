@@ -399,6 +399,42 @@
               </div>
             </div>
 
+            <!-- Enable Red Team toggle (shown when exploitation enabled) -->
+            <div class="flex items-start gap-3" x-show="form.exploit" x-transition>
+              <button
+                @click="form.redTeam = !form.redTeam; if (!form.redTeam) form.chainFindings = false"
+                :class="form.redTeam ? 'bg-fuchsia-500' : 'bg-slate-700'"
+                class="toggle-bg relative inline-flex h-6 w-11 flex-shrink-0 rounded-full cursor-pointer mt-0.5"
+              >
+                <span
+                  :class="form.redTeam ? 'translate-x-5' : 'translate-x-0.5'"
+                  class="toggle-dot inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5"
+                ></span>
+              </button>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Enable Red Team</p>
+                <p class="text-xs text-slate-500 mt-0.5">Plan → generate → execute PoCs → assess impact (sandboxed)</p>
+              </div>
+            </div>
+
+            <!-- Chain Findings toggle (shown when red team enabled) -->
+            <div class="flex items-start gap-3" x-show="form.exploit && form.redTeam" x-transition>
+              <button
+                @click="form.chainFindings = !form.chainFindings"
+                :class="form.chainFindings ? 'bg-fuchsia-500' : 'bg-slate-700'"
+                class="toggle-bg relative inline-flex h-6 w-11 flex-shrink-0 rounded-full cursor-pointer mt-0.5"
+              >
+                <span
+                  :class="form.chainFindings ? 'translate-x-5' : 'translate-x-0.5'"
+                  class="toggle-dot inline-block h-5 w-5 rounded-full bg-white shadow mt-0.5"
+                ></span>
+              </button>
+              <div>
+                <p class="text-sm font-medium text-slate-200">Chain Findings</p>
+                <p class="text-xs text-slate-500 mt-0.5">Analyse exploited findings together for combined attack chains</p>
+              </div>
+            </div>
+
             <!-- Model selector -->
             <div>
               <label class="block text-xs font-medium text-slate-400 mb-1.5">LLM Model</label>
@@ -430,6 +466,21 @@
           <div>
             <p class="text-sm font-semibold text-orange-300">Exploitation Mode Enabled</p>
             <p class="text-xs text-orange-400/80 mt-0.5">Safe PoC scripts will be generated and executed against localhost only. By starting the audit you confirm you own this target and have authorization to test it. Results saved to <code class="bg-orange-500/20 px-1 rounded">exploits/</code> directory.</p>
+          </div>
+        </div>
+
+        <!-- Red team info banner -->
+        <div
+          x-show="form.exploit && form.redTeam"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 -translate-y-2"
+          x-transition:enter-end="opacity-100 translate-y-0"
+          class="mb-5 flex items-start gap-3 p-4 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20"
+        >
+          <svg class="w-5 h-5 text-fuchsia-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <div>
+            <p class="text-sm font-semibold text-fuchsia-300">Red Team Mode Enabled</p>
+            <p class="text-xs text-fuchsia-400/80 mt-0.5">After standard exploitation, the agent plans attacks for each finding, generates and runs PoCs in a sandbox, gates anything unsafe, and writes impact assessments<span x-show="form.chainFindings"> — then analyses exploited findings together for multi-step attack chains</span>. Live process output streams below during the run.</p>
           </div>
         </div>
 
@@ -733,6 +784,43 @@
                   x-text="log.message"
                 ></p>
               </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Exploitation & Red Team — Live Console (real backend process output) -->
+      <div
+        x-show="exploitLogs.length > 0"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 translate-y-2"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        class="glass-card p-5 mt-6 border border-fuchsia-500/20"
+      >
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-fuchsia-400 animate-pulse"></span>
+            Exploitation &amp; Red Team — Live Console
+          </h3>
+          <span class="text-xs text-slate-600" x-text="exploitLogs.length + ' lines'"></span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">
+          Real process output streamed straight from the exploitation and red-team subgraph as they plan, generate, run, and assess proof-of-concept exploits in a sandbox.
+        </p>
+        <div
+          id="exploitConsole"
+          class="h-80 overflow-y-auto space-y-0.5 font-mono text-xs bg-black/40 rounded-lg border border-white/5 p-3"
+          x-ref="exploitConsole"
+        >
+          <template x-for="(log, idx) in exploitLogs" :key="idx">
+            <div class="flex items-start gap-2 py-0.5 leading-relaxed">
+              <span class="text-slate-700 flex-shrink-0 select-none" x-text="log.time"></span>
+              <span
+                :class="log.node === 'red_team' ? 'text-fuchsia-500/70' : 'text-orange-500/70'"
+                class="flex-shrink-0 select-none"
+                x-text="log.node === 'red_team' ? '[red_team]' : '[exploit]'"
+              ></span>
+              <span :class="exploitLogClass(log.line)" class="whitespace-pre-wrap break-all" x-text="log.line"></span>
             </div>
           </template>
         </div>
@@ -1105,6 +1193,8 @@
           noSemgrep: false,
           exploit: false,
           iOwnTarget: false,
+          redTeam: false,
+          chainFindings: false,
           model: 'deepseek/deepseek-v4-flash',
         },
         formError: '',
@@ -1123,6 +1213,7 @@
         currentJobId: null,
         eventSource: null,
         liveLogs: [],
+        exploitLogs: [],     // real print() output tee'd from exploitation/red_team nodes
         llmStreamIndex: {},  // finding_id -> index into liveLogs, for in-place streaming updates
         runStats: { files: 0, raw: 0, confirmed: 0, exploitable: 0 },
         pipelineNodes: [
@@ -1131,6 +1222,7 @@
           { id: 'dependency',  label: 'Dep Audit',       state: 'pending', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
           { id: 'llm',         label: 'LLM Analysis',    state: 'pending', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
           { id: 'exploit',     label: 'Exploitation',    state: 'pending', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+          { id: 'redteam',     label: 'Red Team',        state: 'pending', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
           { id: 'report',      label: 'Report',          state: 'pending', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
         ],
 
@@ -1141,6 +1233,7 @@
           'dependency_audit': 'dependency',
           'llm_analysis': 'llm',
           'exploitation': 'exploit',
+          'red_team': 'redteam',
           'report': 'report',
         },
 
@@ -1213,6 +1306,26 @@
           });
         },
 
+        addExploitLog(node, line) {
+          const time = new Date().toTimeString().slice(0, 8);
+          this.exploitLogs.push({ node, line, time });
+          this.$nextTick(() => {
+            const el = this.$refs.exploitConsole;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        },
+
+        // Content-based color coding for real exploitation/red-team process output
+        exploitLogClass(line) {
+          if (/^\[red-team\]/.test(line)) return 'text-fuchsia-400';
+          if (/^\[exploit\]/.test(line)) return 'text-orange-400';
+          if (/^\[!\]\s*WARNING/i.test(line)) return 'text-amber-400';
+          if (/→\s*Exploitable\b/.test(line)) return 'text-red-400 font-semibold';
+          if (/SKIPPED|unsafe/i.test(line)) return 'text-slate-500';
+          if (/cleared|Not exploitable|Inconclusive/i.test(line)) return 'text-slate-400';
+          return 'text-slate-300';
+        },
+
         toggleFinding(idx) {
           const s = new Set(this.expandedFindings);
           if (s.has(idx)) { s.delete(idx); } else { s.add(idx); }
@@ -1222,6 +1335,7 @@
         resetPipeline() {
           this.pipelineNodes.forEach(n => { n.state = 'pending'; });
           this.liveLogs = [];
+          this.exploitLogs = [];
           this.llmStreamIndex = {};
           this.runStats = { files: 0, raw: 0, confirmed: 0, exploitable: 0 };
         },
@@ -1339,9 +1453,11 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 project_path: projectPath,
-                no_semgrep: this.form.noSemgrep,
-                exploit: this.form.exploit,
+                run_semgrep: !this.form.noSemgrep,
+                run_exploit: this.form.exploit,
                 i_own_target: this.form.iOwnTarget,
+                red_team: this.form.exploit && this.form.redTeam,
+                chain_findings: this.form.exploit && this.form.redTeam && this.form.chainFindings,
                 model: this.form.model,
               }),
             });
@@ -1394,6 +1510,9 @@
           es.addEventListener('finding', (event) => {
             try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
           });
+          es.addEventListener('exploit_log', (event) => {
+            try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
+          });
           es.addEventListener('complete', (event) => {
             try { this.handleSSEEvent(JSON.parse(event.data)); } catch {}
           });
@@ -1444,10 +1563,19 @@
               this.runStats.exploitable = payload.exploit_results;
             }
 
-            // Mark exploitation as skipped if not running
+            // Mark exploitation (and red team, transitively) as skipped if not running
             if (node === 'llm_analysis' && !this.form.exploit) {
               this.setNodeState('exploit', 'skipped');
+              this.setNodeState('redteam', 'skipped');
             }
+            // Mark red team as skipped if exploitation ran but red-team wasn't enabled
+            if (node === 'exploitation' && !this.form.redTeam) {
+              this.setNodeState('redteam', 'skipped');
+            }
+          }
+
+          else if (type === 'exploit_log') {
+            this.addExploitLog(node, data.line || '');
           }
 
           else if (type === 'finding') {

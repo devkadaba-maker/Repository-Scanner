@@ -59,6 +59,70 @@ BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 SENTINEL = object()  # signals end-of-stream in async queues
 
+# Pipeline node names whose stdout (the existing exploitation node's and the
+# red-team subgraph's plain `print()` calls) we forward to the browser as
+# "exploit_log" SSE events — giving a live, real-process view of the
+# exploitation phase, separate from the detection/findings feed.
+_EXPLOIT_LOG_NODES = {"exploitation", "red_team"}
+
+
+class _ThreadAwareStdoutTap:
+    """Tees process stdout: always writes through untouched, and — for
+    whichever background thread has `bind()`-ed an emit callback — also
+    forwards each completed line, tagged with that thread's "current node",
+    to the callback. Used to surface the exploitation/red-team nodes' real
+    `print()` output live in the web UI without touching those node files.
+
+    `sys.stdout` is process-global, so multiple concurrent audit jobs (each
+    in its own background thread) are disambiguated by `threading.get_ident()`.
+    """
+
+    def __init__(self, real) -> None:
+        self._real = real
+        self._lock = threading.Lock()
+        self._state: dict[int, dict[str, Any]] = {}  # tid -> {emit, node, buf}
+
+    def bind(self, emit) -> None:
+        with self._lock:
+            self._state[threading.get_ident()] = {"emit": emit, "node": "", "buf": ""}
+
+    def set_node(self, node_name: str) -> None:
+        with self._lock:
+            entry = self._state.get(threading.get_ident())
+            if entry is not None:
+                entry["node"] = node_name
+
+    def unbind(self) -> None:
+        with self._lock:
+            self._state.pop(threading.get_ident(), None)
+
+    def write(self, text: str) -> int:
+        n = self._real.write(text)
+        tid = threading.get_ident()
+        with self._lock:
+            entry = self._state.get(tid)
+            if entry is None:
+                return n
+            entry["buf"] += text
+            *complete, entry["buf"] = entry["buf"].split("\n")
+            emit, node = entry["emit"], entry["node"]
+        for line in complete:
+            stripped = line.rstrip()
+            if stripped:
+                emit(stripped, node)
+        return n
+
+    def flush(self) -> None:
+        self._real.flush()
+
+    def isatty(self) -> bool:
+        return False
+
+
+_stdout_tap = _ThreadAwareStdoutTap(sys.stdout)
+sys.stdout = _stdout_tap
+
+
 # ---------------------------------------------------------------------------
 # In-memory job store
 # ---------------------------------------------------------------------------
@@ -159,6 +223,7 @@ NODE_LABELS: dict[str, str] = {
     "dependency_audit": "Dependency audit (pip-audit)",
     "llm_analysis": "LLM analysis (confirming findings)",
     "exploitation": "Safe exploitation (PoC validation)",
+    "red_team": "Red team (plan → PoC → execute → assess → chain)",
     "report": "Report generation",
 }
 
@@ -168,6 +233,7 @@ NODE_MESSAGES: dict[str, str] = {
     "dependency_audit": "Dependency audit started — running pip-audit",
     "llm_analysis": "LLM analysis started — confirming findings with AI",
     "exploitation": "Exploitation node started — validating PoCs safely",
+    "red_team": "Red-team subgraph started — planning, generating, and executing PoCs",
     "report": "Report generation started — compiling findings",
 }
 
@@ -280,11 +346,29 @@ def _run_pipeline_with_start_events(job: JobStatus, initial_state: AuditState) -
         }
     )
 
+    # Forward the exploitation/red-team nodes' real `print()` output to the
+    # browser as a separate live console — see _ThreadAwareStdoutTap. We bind
+    # for the whole pipeline run but the callback only emits while the node
+    # currently executing on this thread is in _EXPLOIT_LOG_NODES, so the
+    # detection-phase logs (recon/static/llm/...) are left untouched.
+    def _emit_exploit_log(line: str, node: str) -> None:
+        if node in _EXPLOIT_LOG_NODES:
+            job.emit({"type": "exploit_log", "node": node, "line": line})
+
+    _stdout_tap.bind(_emit_exploit_log)
+    _stdout_tap.set_node("recon")
+
     try:
         graph = build_graph()
         final_state: dict = dict(initial_state)
+        stream_iter = iter(graph.stream(initial_state))
 
-        for step in graph.stream(initial_state):
+        while True:
+            try:
+                step = next(stream_iter)
+            except StopIteration:
+                break
+
             node_name = next(iter(step))
             if node_name not in NODE_LABELS:
                 continue
@@ -343,7 +427,11 @@ def _run_pipeline_with_start_events(job: JobStatus, initial_state: AuditState) -
                     )
                     else "report"
                 ),
-                "exploitation": "report",
+                # conditional: exploitation → red_team OR report
+                "exploitation": (
+                    "red_team" if node_state.get("config", {}).get("red_team") else "report"
+                ),
+                "red_team": "report",
             }
             next_node = NEXT_NODE.get(node_name)
             if next_node:
@@ -354,6 +442,9 @@ def _run_pipeline_with_start_events(job: JobStatus, initial_state: AuditState) -
                         "message": NODE_MESSAGES.get(next_node, f"{next_node} started"),
                     }
                 )
+                # Tag subsequent stdout lines with the node about to run, so
+                # the exploit-log tap can filter/label them correctly.
+                _stdout_tap.set_node(next_node)
 
             job.final_state = node_state
 
@@ -373,6 +464,7 @@ def _run_pipeline_with_start_events(job: JobStatus, initial_state: AuditState) -
         job.emit({"type": "error", "message": str(exc)})
 
     finally:
+        _stdout_tap.unbind()
         time.sleep(0.2)
         job.close()
 
@@ -410,6 +502,8 @@ class StartAuditRequest(BaseModel):
     run_semgrep: bool = Field(True, description="Run semgrep in addition to bandit")
     run_exploit: bool = Field(False, description="Run safe exploitation / PoC validation")
     i_own_target: bool = Field(False, description="Confirm you own / are authorised to test this target")
+    red_team: bool = Field(False, description="Run the red-team subgraph after exploitation (requires run_exploit + i_own_target)")
+    chain_findings: bool = Field(False, description="Within the red-team subgraph, analyse exploited findings for attack chains (requires red_team)")
     model: str = Field(DEFAULT_MODEL, description="OpenRouter model ID")
     output: str = Field("audit_report.md", description="Report filename (no path separators)")
 
@@ -671,6 +765,8 @@ async def github_audit(req: GitHubAuditRequest) -> GitHubAuditResponse:
         "run_semgrep": not req.no_semgrep,
         "run_exploit": False,          # exploitation is disabled for GitHub audits
         "i_own_target": False,
+        "red_team": False,
+        "chain_findings": False,
         "model": req.model,
         "output": "audit_report.md",
         "emit": job.emit,  # forwards live LLM-stream events to the SSE feed
@@ -688,6 +784,10 @@ async def github_audit(req: GitHubAuditRequest) -> GitHubAuditResponse:
         "raw_findings": [],
         "llm_findings": [],
         "exploit_results": [],
+        "attack_plans": [],
+        "poc_scripts": [],
+        "impact_assessments": [],
+        "attack_chains": [],
         "report_path": "",
         "config": config,
     }
@@ -759,6 +859,8 @@ async def start_audit(req: StartAuditRequest) -> StartAuditResponse:
         "run_semgrep": req.run_semgrep,
         "run_exploit": req.run_exploit,
         "i_own_target": req.i_own_target,
+        "red_team": req.red_team,
+        "chain_findings": req.chain_findings,
         "model": req.model,
         "output": output,
         "emit": job.emit,  # forwards live LLM-stream events to the SSE feed
@@ -772,6 +874,10 @@ async def start_audit(req: StartAuditRequest) -> StartAuditResponse:
         "raw_findings": [],
         "llm_findings": [],
         "exploit_results": [],
+        "attack_plans": [],
+        "poc_scripts": [],
+        "impact_assessments": [],
+        "attack_chains": [],
         "report_path": "",
         "config": config,
     }
